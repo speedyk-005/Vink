@@ -1,8 +1,11 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Build
 build/
 develop-eggs/
 dist/
@@ -18,12 +21,26 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Testing
 .pytest_cache/
 .mypy_cache/
+
+# Virtual environments
 .venv/
 venv/
 ENV/
+
+# Environment
 .env
+
+# IDE/Editor
 *.swp
 *.swo
 *~
+
+# Database
+*.vink
+*.db
+*.sqlite
+*.sqlite3

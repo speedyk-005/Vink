@@ -1,0 +1,52 @@
+[project]
+name = "vink"
+version = "0.1.0"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "speedyk_005", email = "speedy40115719@gmail.com" }
+]
+
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "rii>=0.2.12,<1.0",
+
+    # pysqlite3 0.6 is the only version with prebuilt wheels.
+    # 0.7 hasn't been released yet, so we're sticking with 0.6 for now.
+    "pysqlite3>=0.6,<0.7",
+
+    "pydantic>=2.12.2,<3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "setuptools>=64",
+    "wheel",
+]
+
+[project.urls]
+Homepage = "https://github.com/speedyk-005/vink"
+Repository = "https://github.com/speedyk-005/vink"
+
+[build-system]
+requires = [
+    "setuptools>=64",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["vink"]
