@@ -3,13 +3,18 @@ class VinkError(Exception):
     pass
 
 
-class VectorDimensionError(VinkError):
+class InvalidInputError(VinkError):
+    """Raised when one or multiple invalid input(s) are encountered."""
+    pass
+
+
+class VectorDimensionError(InvalidInputError):
     """Raised when vector dimensions don't match the index configuration."""
     pass
 
 
-class InvalidInputError(VinkError):
-    """Raised when one or multiple invalid input(s) are encountered."""
+class InvalidIdError(InvalidInputError):
+    """Raised when an invalid UUID is provided."""
     pass
 
 
