@@ -93,8 +93,8 @@ def validate_embedding(vecs: list[float] | np.ndarray) -> np.ndarray:
     Raises:
         InvalidInputError: If the input contains non-numeric values or has a 
             zero-magnitude (null) norm, preventing normalization.
-        VectorDimensionError: If the input dimensionality or shape is 
-            incompatible with a single-vector representation.
+        VectorDimensionError: If the input dimensionality or shape is incompatible
+            with a single-vector representation.
     """
     try:
         # Cast to float32 immediately to catch non-numeric types

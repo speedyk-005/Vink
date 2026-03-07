@@ -1,14 +1,16 @@
 """
-Vink: A pure Python vector database using Reconfigurable Inverted Index (RII)
-and Product Quantization (PQ).
+Vink: A pure Python vector database with hybrid exact/approximate nearest neighbor search.
 
-Vink provides approximate nearest neighbor (ANN) search for high-dimensional
-vectors with minimal memory footprint using the IVFADC/IVFPQ algorithm.
+Vink automatically switches between exact brute-force search and approximate 
+nearest neighbor (ANN) search based on dataset size, using Reconfigurable 
+Inverted Index (RII) and Product Quantization (PQ) for efficient ANN.
 
 Features:
-    - Fast and memory-efficient ANN search.
-    - Subset search via linear PQ scan.
-    - Reconfigurable index for dynamic datasets.
+    - Hybrid search: exact for small datasets, ANN for large datasets.
+    - Automatic strategy switching based on configurable ratio.
+    - L2-normalized embeddings for consistent distance metrics.
+    - Supports Euclidean (L2) and dot product similarity.
+    - Soft deletes: efficient deletion without data reorganization.
     - Serverless: no external services required.
 
 References:
@@ -28,6 +30,7 @@ See Also:
 from importlib.metadata import PackageNotFoundError, version
 
 from vink.core import VinkDB
+from vink.models import ANNConfig
 from vink.exceptions import *
 
 try:

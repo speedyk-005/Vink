@@ -14,10 +14,10 @@ class VectorDimensionError(InvalidInputError):
 
 
 class InvalidIdError(InvalidInputError):
-    """Raised when an invalid UUID is provided."""
+    """Raised when an invalid UUIDv7 is provided."""
     pass
 
 
-class IndexNotBuiltError(VinkError):
-    """Raised when attempting to query before building the index."""
+class IndexNotFittedError(Exception):
+    """Raised when an operation requiring learned quantization is called on an unitialized index."""
     pass

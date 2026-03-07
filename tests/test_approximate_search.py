@@ -3,12 +3,12 @@ import numpy as np
 
 import pysqlite3 as sqlite3
 
-from vink.models import VectorRecord, VectorRecords
-from vink.strategies.exact_search import ExactSearch
+from vink.models import VectorRecord, VectorRecords, ANNConfig
+from vink.strategies.approximate_search import ApproximateSearch
 from vink.utils.id_generation import generate_id_bytes
 
 
-IDS_TO_DELETE = [generate_id_bytes() for _ in range(2)]
+IDS_TO_DELETE = []
 
 @pytest.fixture(scope="module")
 def in_memory_db():
@@ -30,9 +30,11 @@ def in_memory_db():
 
 
 @pytest.fixture(scope="module")
-def exact_search_strategy(in_memory_db):
-    """Create an ExactSearchStrategy instance for testing."""
-    return ExactSearch(
+def approx_search_strategy(in_memory_db):
+    """Create an ApproximateSearchStrategy instance for testing."""
+    config = ANNConfig(num_subspaces=4, codebook_size=8)
+
+    strategy = ApproximateSearch(
         conn=in_memory_db,
         dir_path=None,
         dim=128,
@@ -40,6 +42,36 @@ def exact_search_strategy(in_memory_db):
         metric="l2",
         verbose=False,
     )
+
+    # N must be greater than codebook_size (8)
+    num_training = 10
+    rng = np.random.default_rng(seed=42)
+    train_vectors = rng.standard_normal((num_training, 128), dtype=np.float32)
+    
+    # Normalize
+    norm = np.linalg.norm(train_vectors, axis=1, keepdims=True)
+    train_vectors = train_vectors / (norm + 1e-9)
+
+    # Generate active IDs for training vectors
+    ids = [generate_id_bytes() for _ in range(num_training)]
+    strategy.fit(train_vectors, np.array(ids, dtype='S16'), config)
+
+    # Manually set the records in the database to simulate exact search data before the switch
+    conn = strategy.conn
+    for id, vecs in zip(ids, train_vectors):
+        conn.cursor().execute(
+            """
+            INSERT INTO records (id, content, metadata, embedding, deleted) 
+            VALUES (?, "fit content", jsonb('{}'), ?, 0)
+            """,
+            (id, vecs),
+        )
+    conn.commit()
+
+    global IDS_TO_DELETE
+    IDS_TO_DELETE = ids  # Store them for the deletion test case
+
+    return strategy
 
 
 @pytest.fixture
@@ -62,57 +94,55 @@ def sample_embeddings(request):
     return embeddings
 
 
-def test_add(exact_search_strategy, sample_embeddings):
+def test_add(approx_search_strategy, sample_embeddings):
     """
     Test adding vector records by checking if internal structures are synced and SQLite count.
     """
     records=[
-        {"id": IDS_TO_DELETE[0], "content": "content 1", "metadata": {"index": 1}, "embedding": sample_embeddings},
-        {"id": IDS_TO_DELETE[1], "content": "content 2", "metadata": {"index": 2}, "embedding": sample_embeddings},
-        {"content": "content 3", "metadata": {"index": 3}, "embedding": sample_embeddings},
-        {"content": "content 4", "metadata": {"index": 4}, "embedding": sample_embeddings},
+        {"content": "content 1", "metadata": {"index": 1}, "embedding": sample_embeddings},
+        {"content": "content 2", "metadata": {"index": 2}, "embedding": sample_embeddings},
     ]
-    ids = exact_search_strategy.add(VectorRecords(dim=128, records=records))
+    ids = approx_search_strategy.add(VectorRecords(dim=128, records=records))
 
-    n_ids = len(exact_search_strategy.ids)
-    n_vecs = len(exact_search_strategy.vectors)
-    n_map = len(exact_search_strategy.id_to_idx)
-    expected = 4
+    n_ids = len(approx_search_strategy.ids)
+    n_map = len(approx_search_strategy.id_to_idx)
 
-    assert n_ids == n_vecs == n_map == expected, (
+    # Including the ones added in the fitting process in the strategy fixture
+    expected = 2 + 10
+
+    assert n_ids == n_map == expected, (
         f"Sync Error! Expected {expected} records, but got: "
-        f"IDs={n_ids}, Vectors={n_vecs}, Map={n_map}"
+        f"IDs={n_ids}, Map={n_map}"
     )
 
-    cursor = exact_search_strategy.conn.cursor()
+    cursor = approx_search_strategy.conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM records WHERE deleted = 0")
     db_count = cursor.fetchone()[0]
     assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
 
 
-def test_delete(exact_search_strategy):
+def test_delete(approx_search_strategy):
     """Test deleting vector records by checking if they aren't active anymore"""
-    exact_search_strategy.delete(IDS_TO_DELETE)
-    exact_search_strategy._ensure_cache()
+    approx_search_strategy.delete(IDS_TO_DELETE)
+    approx_search_strategy._ensure_cache()
 
-    n_ids = len(exact_search_strategy.active_ids)
-    n_vecs = len(exact_search_strategy.active_vectors)  
-    n_mask = sum(exact_search_strategy.mask)
-    expected = 2
+    n_ids = len(approx_search_strategy.active_ids)
+    n_mask = sum(approx_search_strategy.mask)
+    expected = 2  # the two ones added in the test above
 
-    assert n_ids == n_vecs == n_mask == expected, (
+    assert n_ids == n_mask == expected, (
         f"Sync Error! Expected {expected} active records, but got: "
-        f"IDs={n_ids}, Vectors={n_vecs}, Mask={n_mask}"
+        f"IDs={n_ids}, Mask={n_mask}"
     )
 
-    cursor = exact_search_strategy.conn.cursor()
+    cursor = approx_search_strategy.conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM records WHERE deleted = 0")
     db_count = cursor.fetchone()[0]
     assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
 
 
 @pytest.mark.parametrize("sample_embeddings", [{"normalize": True}], indirect=True)
-def test_search(exact_search_strategy, sample_embeddings):
+def test_search(approx_search_strategy, sample_embeddings):
     """
     Verify that the search operation correctly retrieves and ranks 
     both existing and newly added vector records.
@@ -124,15 +154,15 @@ def test_search(exact_search_strategy, sample_embeddings):
         {"id": generate_id_bytes(), "content": "content 7", "metadata": {"index": 7}, "embedding": sample_embeddings},
         {"id": generate_id_bytes(), "content": "content 8", "metadata": {"index": 8}, "embedding": sample_embeddings},
     ]
-    exact_search_strategy.add(VectorRecords(dim=128, records=records))
+    approx_search_strategy.add(VectorRecords(dim=128, records=records))
 
-    results = exact_search_strategy.search(sample_embeddings, top_k=4, include_vectors=True)
+    results = approx_search_strategy.search(sample_embeddings, top_k=4, include_vectors=True)
     id_to_res = {res["id"]: res for res in results}
 
     assert len(results) == 4, f"Expected 4 results, but got {len(results)}"
 
     for record in records:
-        rec_id_str = exact_search_strategy._bytes_to_uuid_str(record["id"])
+        rec_id_str = approx_search_strategy._bytes_to_uuid_str(record["id"])
         
         # Only validate if the record actually made it into the top_k
         if rec_id_str in id_to_res:

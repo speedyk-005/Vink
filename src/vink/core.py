@@ -1,17 +1,24 @@
-from typing import Annotated, Callable, Literal
+from typing import Callable, Literal
 from pathlib import Path
 import shutil
 from uuid import UUID
-
+import math
+from threading import Lock
 import numpy as np
-import rii
-import nanopq
-import pysqlite3 as sqlite3
-from pydantic import Field, ValidationError
 
-from vink.utils.input_validation import validate_arguments, validate_embedding, validate_id 
+import regex as re
+import pysqlite3 as sqlite3
+from pydantic import ValidationError
+
+from vink.utils.input_validation import (
+    validate_arguments,
+    validate_embedding,
+    validate_id,
+    pretty_errors,
+)
 from vink.exceptions import VectorDimensionError, InvalidInputError
-from vink.models import VectorRecords
+from vink.models import VectorRecord, VectorRecords, ANNConfig
+from vink.tasker import Tasker
 
 
 class VinkDB:
@@ -36,14 +43,11 @@ class VinkDB:
         dir_path: str | Path,
         dim: int,
         metric: Literal["euclidian", "dot"] = "euclidian",
-        num_subspaces: Annotated[int, Field(ge=0)] = 32,
-        quantizer: Literal["pq", "opq"] = "pq",
         force_exact: bool = False,
-        switch_ratio: Annotated[float, Field(ge=2, le=16)] = 4.0,
-        reconfig_threshold: Annotated[int, Field(ge=0)] = 1000,
-        verbose: bool = False,
+        ann_config: ANNConfig | None = None,
         embedding_callback: Callable | None = None,
         overwrite: bool = False,
+        verbose: bool = False,
     ) -> None:
         """
         Initialize a VinkDB instance.
@@ -56,48 +60,40 @@ class VinkDB:
             Everything else is read-only properties.
 
         Args:
-            dir_path (str | Path): Directory path to store vector data. Contains
-                the pickled index and SQLite database for vector records.
+            dir_path (str | Path): Directory path to store vector data. Contains the pickled index
+                and SQLite database for vector records.
                 Use ":memory:" for volatile in-memory storage.
             dim (int): Dimension of the vectors.
             metric (Literal["euclidian", "dot"], optional): Distance metric to use.
                 Defaults to "euclidian".
-            num_subspaces (int, optional): Number of subspaces for product quantization.
-                Only applicable when force_exact is False. Defaults to 32.
-            quantizer (Literal["pq", "opq"], optional): Quantization method.
-                Only applicable when force_exact is False.
-                OPQ (Optimized Product Quantization) is slightly more accurate but
-                slower than PQ. Defaults to "pq".
             force_exact (bool, optional): If True, only exact calculation is used.
                 If False, switches between exact and ANN based on switch_ratio.
                 Defaults to False.
-            switch_ratio (float, optional): Ratio threshold for switching between
-                exact and approximate search. Only applicable when force_exact is False.
-                Recommended values are powers of 2 (2, 4, 8, or 16) as the ratio
-                is not linear. Defaults to 4.0.
-            reconfig_threshold (int, optional): Number of inserts before reconfiguring the
-                index to maintain search performance. Only applicable when force_exact
-                is False. Defaults to 1000.
-            verbose (bool, optional): Enable verbose output. Defaults to False.
-            embedding_callback (Callable | None, optional): Callback function to generate
-                embeddings from content. If provided, 'embedding' key is optional in
+            ann_config (ANNConfig | None, optional): Configuration for approximate nearest neighbor search.
+                Only applicable when force_exact is False.
+                If not provided, defaults to ANNConfig with standard settings.
+            embedding_callback (Callable | None, optional): Callback function to generate embeddings
+                from content. If provided, 'embedding' key is optional in
                 vector records as it will be generated via this callback. Defaults to None.
             overwrite (bool, optional): Overwrite existing index if exists. Defaults to False.
+            verbose (bool, optional): Enable verbose output. Defaults to False.
         """
         # Determine if in-memory mode
         self._in_memory = isinstance(dir_path, str) and dir_path.strip() == ":memory:"
-        
+
         self._dir_path = Path(dir_path)
         self._dim = dim
-        self._num_subspaces = num_subspaces
 
         # L2 norm is the Euclidean distance metric; we use "l2" internally for compatibility with rii/nanopq
         self._metric = "l2" if metric == "euclidian" else metric
 
-        self._quantizer = quantizer
         self._force_exact = force_exact
-        self._switch_ratio = switch_ratio
-        self.reconfig_threshold = reconfig_threshold
+        self._ann_config = ann_config
+
+        # Default the config with standard settings if force_exact is not true
+        if not (self._force_exact and self._ann_config):
+             self._ann_config = ANNConfig()
+            
         self.embedding_callback = embedding_callback
         self.verbose = verbose
 
@@ -116,8 +112,8 @@ class VinkDB:
         self._ensure_table_exists()
 
         # Initialize with ExactSearchStrategy by default
-        from vink.strategies.exact_search import ExactSearchStrategy
-        self._strategy = ExactSearchStrategy(
+        from vink.strategies.exact_search import ExactSearch
+        self._strategy = ExactSearch(
             conn=self._conn,
             dir_path=self._dir_path if not self._in_memory else None,
             dim=self._dim,
@@ -126,11 +122,53 @@ class VinkDB:
             verbose=self.verbose,
         )
 
+        # Threading components for ANN auto-switch
+        self._ann_building = False
+        self._lock = Lock()
+        self._tasker = Tasker(task=lambda: self._build_approx(), once=True)
+
+    @property
+    def dir_path(self) -> Path:
+        """The absolute path to the directory where database files are persisted."""
+        return self._dir_path
+
+    @property
+    def dim(self) -> int:
+        """The dimension of the vectors (embedding length)."""
+        return self._dim
+
+    @property
+    def metric(self) -> str:
+        """The distance metric used for similarity search."""
+        return "euclidean" if self._metric == "l2" else self._metric
+
+    @property
+    def force_exact(self) -> bool:
+        """Whether the database uses exact brute-force calculations only."""
+        return self._force_exact
+
+    @property
+    def in_memory(self) -> bool:
+        """Whether storage is volatile (':memory:') or persisted on disk."""
+        return self._in_memory
+
+    @property
+    def strategy(self) -> str:
+        """The internal indexing strategy currently active, formatted in snake_case."""
+        strategy_name = self._strategy.__class__.__name__
+        parts = re.split(r"(?<!^)(?=\p{LU})", strategy_name)
+        return "_".join([p.lower() for p in parts])
+
+    @property
+    def ann_config(self) -> dict:
+        """The ANN configuration settings as a dictionary."""
+        return self._ann_config.model_dump() if self._ann_config else {}
+
     def _validate_config(self) -> None:
         """
         Internal handshake to verify embedding dimensions and PQ constraints.
         """
-        # Callback Handshake using existing validation logic
+        # Callback Handshake validation
         if self.embedding_callback:
             try:
                 raw_vec = self.embedding_callback("vink_warmup_test")
@@ -149,23 +187,15 @@ class VinkDB:
             except Exception as e:
                 raise InvalidInputError(f"Embedding callback crashed during handshake: {e}")
 
-        # PQ Constraint Logic (Geometric safety)
+        # Ann config validation
         if not self._force_exact:
-            if self._num_subspaces > self._dim:
-                raise VectorDimensionError(
-                    f"num_subspaces ({self._num_subspaces}) cannot exceed dim ({self._dim})."
-                )
-            
-            if self._dim % self._num_subspaces != 0:
-                remainder = self._dim / self._num_subspaces
-                raise VectorDimensionError(
-                    f"Dimension ({self._dim}) must be divisible by num_subspaces ({self._num_subspaces}). "
-                    f"Result: {remainder:.2f}"
-                )
+            self._ann_config.validate_dim(self._dim)
 
     def _ensure_table_exists(self) -> None:
-        """Create the SQLite database table if it doesn't exist yet.""" 
+        """Create the SQLite database tables if they don't exist yet.""" 
         cursor = self._conn.cursor()
+        
+        # Main records table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS records (
                 id BLOB PRIMARY KEY,        -- UUID bytes
@@ -175,6 +205,18 @@ class VinkDB:
                 deleted BOOLEAN DEFAULT 0   -- Soft-delete flag (0=active, 1=deleted)
             )
         """)
+        
+        # Buffer table for pending operations during ANN fit
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS buffer (
+                id BLOB PRIMARY KEY,
+                content TEXT NOT NULL,
+                metadata BLOB NOT NULL,
+                embedding BLOB,
+                deleted BOOLEAN DEFAULT 0
+            )
+        """)
+        
         self._conn.commit()
 
     @validate_arguments
@@ -183,8 +225,8 @@ class VinkDB:
 
         Args:
             vector_records (list[dict]): List of dicts with 'content', 'metadata',
-                and 'embedding' keys. 'id' is optional - if not provided, a UUIDv7
-                will be auto-generated.
+                and 'embedding' keys. 'id' is optional
+                If not provided, a UUIDv7 will be auto-generated.
 
         Returns:
             list[str]: List of assigned UUIDv7 IDs.
@@ -200,35 +242,73 @@ class VinkDB:
                 embedding_callback=self.embedding_callback,
             )
         except ValidationError as e:
-            print(e.errors())
-            raise InvalidInputError(f"Invalid vector records: {str(e)}")
+            raise InvalidInputError(f"Invalid vector records: {pretty_errors(e)}") from None
+
+        if self.strategy != "approximate_search" and self._should_switch():
+            assigned_ids = [r["id"] for r in vector_records]
+            if not self._ann_building:
+                self._tasker.run()
+            self._add_to_buffer(records)
+            return assigned_ids
 
         return self._strategy.add(records)
+
+    def _add_to_buffer(self, records: VectorRecords) -> None:
+        """Add records to buffer table."""
+        cursor = self._conn.cursor()
+        for record in records.records:
+            cursor.execute(
+                "INSERT INTO buffer (id, content, metadata, embedding, deleted) "
+                "VALUES (?, ?, ?, ?, 0)",
+                (record.id, record.content, record.metadata, record.embedding.tobytes())
+            )
+        self._conn.commit()
 
     @validate_arguments
     def delete(self, ids: list[str]) -> None:
         """Delete vectors from the index by their IDs.
 
         Args:
-            ids (list[str]): List of UUIDv7 IDs (as strings) to delete.
+            ids (list[str]): List of UUIDv7 IDs to delete.
         """
         id_bytes = [validate_id(id_str) for id_str in ids]
+
+        # If ANN is building, write to buffer for replay after switch
+        if self.strategy != "approximate_search" and self._ann_building:
+            placeholders = ','.join('?' * len(id_bytes))
+            cursor = self._conn.cursor()
+            cursor.execute(
+                f"UPDATE buffer SET deleted = 1 WHERE id IN ({placeholders})",
+                id_bytes,
+            )
+            self._conn.commit()
+            return
+
         return self._strategy.delete(id_bytes)
+
+    def count(self) -> int:
+        """Count the number of active (non-deleted) vectors in the database.
+        
+        Returns:
+            int: The number of active vectors where deleted is 0.
+        """
+        cursor = self._conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM records WHERE deleted = 0")
+        return cursor.fetchone()[0]
 
     @validate_arguments
     def search(
         self,
-        query: list[float] | np.ndarray,
+        query_vec: list[float] | np.ndarray,
         top_k: int = 10,
         include_vectors: bool = False,
     ) -> list[dict]:
-        """Search for k nearest neighbors.
+        """Search for k nearest neighbors using the configured metric.
 
         Args:
-            query (list[float] | np.ndarray): The query vector as a list of floats,
+            query_vec (list[float] | np.ndarray): The query vector as a list of floats,
                 1D numpy array (d,), or 2D numpy array (1, d).
-            top_k (int, optional): Number of nearest neighbors to return.
-                Defaults to 10.
+            top_k (int, optional): Number of nearest neighbors to return. Defaults to 10.
             include_vectors (bool, optional): If True, include 'embedding' key in results.
                 Defaults to False.
 
@@ -236,18 +316,114 @@ class VinkDB:
             list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
-        query = validate_embedding(query)
-        return self._strategy.search(query, top_k=top_k, include_vectors=include_vectors)
+        query = validate_embedding(query_vec)
+        return self._strategy.search(query_vec, top_k=top_k, include_vectors=include_vectors)
 
+    def _should_switch(self) -> bool:
+        """
+        Check if ANN switch should be triggered based on dual conditions:
+        1. Sufficiency: num_vectors >= min_required (num_subspaces * codebook_size)
+        2. Complexity: sqrt(dim * num_vectors) / 1000 >= switch_ratio
 
-# Read-only properties (cannot be changed after initialization)
-# Defined outside class to keep it clean
-VinkDB.metric = property(lambda self: "euclidian" if self._metric == "l2" else self._metric)
-VinkDB.dir_path = property(lambda self: self._dir_path)
-VinkDB.dim = property(lambda self: self._dim)
-VinkDB.num_subspaces = property(lambda self: self._num_subspaces)
-VinkDB.quantizer = property(lambda self: self._quantizer)
-VinkDB.force_exact = property(lambda self: self._force_exact)
-VinkDB.switch_ratio = property(lambda self: self._switch_ratio)
-VinkDB.in_memory = property(lambda self: self._in_memory)
-VinkDB.strategy = property(lambda self: self._strategy)  
+        Returns:
+            bool: True if conditions met to switch to ANN, False otherwise.
+        """
+        if self._force_exact:
+            return False
+
+        n_vecs = sum(self._strategy.mask)
+        if n_vecs == 0:
+            return False
+
+        cfg = self._ann_config
+        min_required = cfg.num_subspaces * cfg.codebook_size
+
+        if n_vecs < min_required:
+            return False
+
+        complexity = math.sqrt(self._dim * n_vecs) / 1000
+        return complexity >= cfg.switch_ratio
+
+    def _build_approx(self) -> dict:
+        """
+        Pure function: Build ANN strategy without side effects.
+        
+        This is the Tasker task - runs in daemon thread.
+        
+        Returns:
+            dict: {
+                "success": bool,
+                "new_strategy": ApproximateSearch | None,
+                "reason": str | None
+            }
+        """
+        if not self._should_switch():
+            return {"success": False, "new_strategy": None, "reason": "conditions_not_met"}
+
+        self._strategy._ensure_cache()
+        vectors = self._strategy.active_vectors
+        ids = self._strategy.active_ids
+
+        if len(vectors) == 0:
+            return {"success": False, "new_strategy": None, "reason": "no_vectors"}
+
+        from vink.strategies.approximate_search import ApproximateSearch
+        approx_strategy = ApproximateSearch(
+            conn=self._conn,
+            dir_path=self._dir_path if not self._in_memory else None,
+            dim=self._dim,
+            in_memory=self._in_memory,
+            metric=self._metric,
+            verbose=self.verbose,
+        )
+        approx_strategy.fit(vectors, ids, self._ann_config)
+
+        return {
+            "success": True,
+            "new_strategy": approx_strategy,
+            "reason": None
+        }
+
+    def _dump_buffer(self) -> None:
+        """Read buffer where deleted=0 and apply to self._strategy."""
+        cursor = self._conn.cursor()
+        cursor.execute("SELECT id, content, metadata, embedding FROM buffer WHERE deleted = 0")
+        buffer_rows = cursor.fetchall()
+        
+        if not buffer_rows:
+            return
+        
+        records = [
+            VectorRecord(
+                id=id_bytes,
+                content=content,
+                metadata=meta,
+                embedding=np.frombuffer(embed, dtype=np.float32)
+            )
+            for id_bytes, content, meta, embed in buffer_rows
+        ]
+        self._strategy.add(VectorRecords(dim=self._dim, records=records))
+
+    def _switch_to_approx(self) -> None:
+        """Swap to ANN strategy after build completes."""
+        self._ann_building = True
+        
+        result = self._tasker.lastest_result
+        if not result["success"]:
+            self._ann_building = False
+            return
+        
+        new_strategy = result["new_strategy"]
+        
+        # Swap strategy
+        with self._lock:
+            self._strategy = new_strategy
+        
+        self._dump_buffer()
+        
+        # Clear buffer
+        cursor = self._conn.cursor()
+        cursor.execute("DELETE FROM buffer")
+        self._conn.commit()
+        
+        self._ann_building = False

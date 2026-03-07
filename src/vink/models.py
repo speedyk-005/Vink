@@ -1,4 +1,4 @@
-from typing import Sequence, Callable
+from typing import Sequence, Callable, Annotated, Literal
 import numpy as np
 from uuid import UUID
 from pydantic import Field, BaseModel, field_validator, model_validator
@@ -6,6 +6,42 @@ from pydantic import Field, BaseModel, field_validator, model_validator
 from vink.exceptions import InvalidInputError, VectorDimensionError
 from vink.utils.id_generation import generate_id_bytes
 from vink.utils.input_validation import validate_embedding, validate_id
+
+
+class ANNConfig(BaseModel):
+    """Configuration for Approximate Nearest Neighbor (ANN) search settings."""
+
+    num_subspaces: Annotated[int, Field(ge=1)] = Field(
+        32,
+        description="The number of sub-vectors to split each embedding into. Must be a divisor of the embedding dimension."
+    )
+    quantizer: Literal["pq", "opq"] = Field(
+        "pq", description="The quantization algorithm. OPQ is more accurate but slower than PQ."
+    )
+    codebook_size: Annotated[int, Field(ge=2)] = Field(
+        256, description="Number of centroids per subspace. Affects memory usage and search accuracy."
+    )
+    switch_ratio: Annotated[float, Field(ge=2, le=16)] = Field(
+        4.0,
+        description="Ratio threshold for switching between exact and approximate search. Recommended values are powers of 2."
+    )
+    reconfig_threshold: Annotated[int, Field(ge=0)] = Field(
+        1000, description="Number of inserts before reconfiguring the index to maintain search performance."
+    )
+
+    def validate_dim(self, dim: int) -> None:
+        """Validate ANN config against a specific vector dimension."""
+        if self.num_subspaces > dim:
+            raise VectorDimensionError(
+                f"num_subspaces ({self.num_subspaces}) cannot exceed dim ({dim})."
+            )
+        
+        if dim % self.num_subspaces != 0:
+            remainder = dim / self.num_subspaces
+            raise VectorDimensionError(
+                f"Dimension ({dim}) must be divisible by num_subspaces ({self.num_subspaces}). "
+                f"Result: {remainder:.2f}"
+            )
 
 
 class VectorRecord(BaseModel):
@@ -44,7 +80,7 @@ class VectorRecords(BaseModel):
     dim: int = Field(gt=0, description="The required dimension for all embeddings.")
     records: Sequence[VectorRecord] = Field(description="List of vector records to be indexed.")
     embedding_callback: Callable[[str], np.ndarray] | None = Field(
-        None, 
+        default=None, 
         description="Optional function to generate vectors for records missing 'embedding' values."
     )
 
