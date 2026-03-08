@@ -1,7 +1,7 @@
 from typing import Callable, Literal
 from pathlib import Path
 import shutil
-from uuid import UUID
+import json
 import math
 from threading import Lock
 import numpy as np
@@ -16,9 +16,12 @@ from vink.utils.input_validation import (
     validate_id,
     pretty_errors,
 )
-from vink.exceptions import VectorDimensionError, InvalidInputError
-from vink.models import VectorRecord, VectorRecords, ANNConfig
+
 from vink.tasker import Tasker
+from vink.models import VectorRecord, VectorRecords, ANNConfig
+from vink.utils.logging import log_info
+from vink.exceptions import VectorDimensionError, InvalidInputError
+
 
 
 class VinkDB:
@@ -91,8 +94,8 @@ class VinkDB:
         self._ann_config = ann_config
 
         # Default the config with standard settings if force_exact is not true
-        if not (self._force_exact and self._ann_config):
-             self._ann_config = ANNConfig()
+        if not (self._force_exact or self._ann_config):
+            self._ann_config = ANNConfig()
             
         self.embedding_callback = embedding_callback
         self.verbose = verbose
@@ -108,7 +111,7 @@ class VinkDB:
         else:
             self.record_db = ":memory:"
         
-        self._conn = sqlite3.connect(str(self.record_db))
+        self._conn = sqlite3.connect(str(self.record_db), check_same_thread=False)
         self._ensure_table_exists()
 
         # Initialize with ExactSearchStrategy by default
@@ -244,14 +247,24 @@ class VinkDB:
         except ValidationError as e:
             raise InvalidInputError(f"Invalid vector records: {pretty_errors(e)}") from None
 
+        log_info(self.verbose, "Adding {} vector records to index.", len(vector_records))
+
         if self.strategy != "approximate_search" and self._should_switch():
             assigned_ids = [r["id"] for r in vector_records]
+
             if not self._ann_building:
+                self._ann_building = True
                 self._tasker.run()
+
             self._add_to_buffer(records)
+            
+            log_info(self.verbose, "Successfully added {} records to buffer.", len(assigned_ids))
             return assigned_ids
 
-        return self._strategy.add(records)
+        assigned_ids = self._strategy.add(records)
+        
+        log_info(self.verbose, "Successfully added {} records to index.", len(assigned_ids))
+        return assigned_ids
 
     def _add_to_buffer(self, records: VectorRecords) -> None:
         """Add records to buffer table."""
@@ -259,8 +272,8 @@ class VinkDB:
         for record in records.records:
             cursor.execute(
                 "INSERT INTO buffer (id, content, metadata, embedding, deleted) "
-                "VALUES (?, ?, ?, ?, 0)",
-                (record.id, record.content, record.metadata, record.embedding.tobytes())
+                "VALUES (?, ?, jsonb(?), ?, 0)",
+                (record.id, record.content, json.dumps(record.metadata), record.embedding.tobytes())
             )
         self._conn.commit()
 
@@ -271,6 +284,8 @@ class VinkDB:
         Args:
             ids (list[str]): List of UUIDv7 IDs to delete.
         """
+        log_info(self.verbose, "Deleting {} vectors from index.", len(ids))
+        
         id_bytes = [validate_id(id_str) for id_str in ids]
 
         # If ANN is building, write to buffer for replay after switch
@@ -282,9 +297,11 @@ class VinkDB:
                 id_bytes,
             )
             self._conn.commit()
+            log_info(self.verbose, "Marked {} vectors for deletion in buffer.", len(ids))
             return
 
-        return self._strategy.delete(id_bytes)
+        self._strategy.delete(id_bytes)
+        log_info(self.verbose, "Successfully deleted {} vectors.", len(ids))
 
     def count(self) -> int:
         """Count the number of active (non-deleted) vectors in the database.
@@ -292,6 +309,9 @@ class VinkDB:
         Returns:
             int: The number of active vectors where deleted is 0.
         """
+        if self.strategy != "approximate_search":
+            return sum(self._strategy.mask)
+
         cursor = self._conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM records WHERE deleted = 0")
         return cursor.fetchone()[0]
@@ -316,8 +336,13 @@ class VinkDB:
             list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
+        log_info(self.verbose, "Searching for {} nearest neighbors using {}.", top_k, self.strategy)
+        
         query = validate_embedding(query_vec)
-        return self._strategy.search(query_vec, top_k=top_k, include_vectors=include_vectors)
+        results = self._strategy.search(query_vec, top_k=top_k, include_vectors=include_vectors)
+        
+        log_info(self.verbose, "Found {} results for query.", len(results))
+        return results
 
     def _should_switch(self) -> bool:
         """
@@ -331,7 +356,7 @@ class VinkDB:
         if self._force_exact:
             return False
 
-        n_vecs = sum(self._strategy.mask)
+        n_vecs = self.count()
         if n_vecs == 0:
             return False
 
@@ -346,26 +371,17 @@ class VinkDB:
 
     def _build_approx(self) -> dict:
         """
-        Pure function: Build ANN strategy without side effects.
+        Tasker task: Build ANN strategy in daemon thread.
         
-        This is the Tasker task - runs in daemon thread.
+        This is the callable submitted to Tasker. It runs in a background
+        daemon thread and returns the new strategy without side effects.
         
         Returns:
-            dict: {
-                "success": bool,
-                "new_strategy": ApproximateSearch | None,
-                "reason": str | None
-            }
+            dict: An empty dictionnary to satisfy the tasker return type
         """
-        if not self._should_switch():
-            return {"success": False, "new_strategy": None, "reason": "conditions_not_met"}
-
         self._strategy._ensure_cache()
         vectors = self._strategy.active_vectors
         ids = self._strategy.active_ids
-
-        if len(vectors) == 0:
-            return {"success": False, "new_strategy": None, "reason": "no_vectors"}
 
         from vink.strategies.approximate_search import ApproximateSearch
         approx_strategy = ApproximateSearch(
@@ -377,53 +393,44 @@ class VinkDB:
             verbose=self.verbose,
         )
         approx_strategy.fit(vectors, ids, self._ann_config)
+        
+        # Automatically switch after successful build
+        self._switch_to_approx_with_strategy(approx_strategy)
 
-        return {
-            "success": True,
-            "new_strategy": approx_strategy,
-            "reason": None
-        }
+        return {}
 
     def _dump_buffer(self) -> None:
         """Read buffer where deleted=0 and apply to self._strategy."""
         cursor = self._conn.cursor()
-        cursor.execute("SELECT id, content, metadata, embedding FROM buffer WHERE deleted = 0")
+        cursor.execute("SELECT id, content, json(metadata), embedding FROM buffer WHERE deleted = 0")
         buffer_rows = cursor.fetchall()
         
         if not buffer_rows:
             return
         
         records = [
-            VectorRecord(
-                id=id_bytes,
-                content=content,
-                metadata=meta,
-                embedding=np.frombuffer(embed, dtype=np.float32)
-            )
+            {
+                "id": id_bytes,
+                "content": content,
+                "metadata": json.loads(meta),
+                "embedding": np.frombuffer(embed, dtype=np.float32),
+            }
             for id_bytes, content, meta, embed in buffer_rows
         ]
         self._strategy.add(VectorRecords(dim=self._dim, records=records))
 
-    def _switch_to_approx(self) -> None:
-        """Swap to ANN strategy after build completes."""
-        self._ann_building = True
-        
-        result = self._tasker.lastest_result
-        if not result["success"]:
-            self._ann_building = False
-            return
-        
-        new_strategy = result["new_strategy"]
-        
+    def _switch_to_approx_with_strategy(self, new_strategy) -> None:
+        """Apply strategy switch with the given new_strategy."""
         # Swap strategy
         with self._lock:
             self._strategy = new_strategy
-        
+
+        # Change the flag upfront to prevent new operations to use buffer
+        self._ann_building = False
+
         self._dump_buffer()
         
         # Clear buffer
         cursor = self._conn.cursor()
         cursor.execute("DELETE FROM buffer")
         self._conn.commit()
-        
-        self._ann_building = False

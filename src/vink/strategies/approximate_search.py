@@ -1,4 +1,3 @@
-import json
 import random
 from pathlib import Path
 from threading import Lock
@@ -10,8 +9,9 @@ import nanopq
 import pysqlite3 as sqlite3
 
 from vink.strategies.base import BaseStrategy
-from vink.exceptions import IndexNotFittedError
 from vink.models import ANNConfig
+from vink.utils.logging import log_info
+from vink.exceptions import IndexNotFittedError, InvalidInputError
 
 
 class ApproximateSearch(BaseStrategy):
@@ -111,6 +111,16 @@ class ApproximateSearch(BaseStrategy):
                 "The quantization parameters cannot be modified after fitting."
             )
 
+        log_info(self.verbose, "Starting ANN index fit with {} vectors.", len(vectors))
+
+        # Validate that codebook_size is not greater than training vector count
+        if ann_config.codebook_size >= len(vectors):
+            raise InvalidInputError(
+                f"Codebook size ({ann_config.codebook_size}) must be strictly less than "
+                f"the number of training vectors ({len(vectors)}). "
+                "This constraint is required by Product Quantization."
+            )
+
         self.active_ids = active_ids
         self.ids = list(active_ids)
     
@@ -131,6 +141,11 @@ class ApproximateSearch(BaseStrategy):
             train_vectors = vectors[train_indices]
         else:
             train_vectors = vectors
+
+        log_info(
+            self.verbose, "Training codec with {} vectors using {} subspaces and codebook_size {}.", 
+            len(train_vectors), ann_config.num_subspaces, ann_config.codebook_size
+        )
 
         codec_params = {
             "M": ann_config.num_subspaces,
@@ -159,6 +174,7 @@ class ApproximateSearch(BaseStrategy):
         self.index.add_configure(vecs=indexed_vecs)
         
         self._is_fitted = True
+        log_info(self.verbose, "ANN index fit completed successfully.")
 
     def _validate_fitted(self) -> None:
         """
