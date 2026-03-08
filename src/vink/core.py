@@ -264,7 +264,7 @@ class VinkDB:
         log_info(self.verbose, "Adding {} vector records to index.", len(vector_records))
 
         if self.strategy != "approximate_search" and self._should_switch():
-            assigned_ids = [r["id"] for r in vector_records]
+            assigned_ids = [r.id for r in records.records]
 
             if not self._ann_building:
                 self._ann_building = True
