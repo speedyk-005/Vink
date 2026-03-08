@@ -3,7 +3,7 @@ import numpy as np
 
 import pysqlite3 as sqlite3
 
-from vink.models import VectorRecord, VectorRecords, ANNConfig
+from vink.models import VectorRecords, ANNConfig
 from vink.strategies.approximate_search import ApproximateSearch
 from vink.utils.id_generation import generate_id_bytes
 
@@ -74,26 +74,6 @@ def approx_search_strategy(in_memory_db):
     return strategy
 
 
-@pytest.fixture
-def sample_embeddings(request):
-    """
-    Generate sample embeddings. 
-    Usage for Auto-Norm: 
-    @pytest.mark.parametrize("sample_embeddings", [{"normalize": True}], indirect=True)
-    """
-    # Default to False if no parameter is provided (like in test_add)
-    params = getattr(request, "param", {"normalize": False})
-    
-    rng = np.random.default_rng(seed=42)
-    embeddings = rng.standard_normal((1, 128), dtype=np.float32)
-    
-    if params.get("normalize"):
-        norm = np.linalg.norm(embeddings, axis=1, keepdims=True)
-        embeddings = embeddings / (norm + 1e-9) # Prevent div by zero
-        
-    return embeddings
-
-
 def test_add(approx_search_strategy, sample_embeddings):
     """
     Test adding vector records by checking if internal structures are synced and SQLite count.
@@ -141,27 +121,19 @@ def test_delete(approx_search_strategy):
     assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
 
 
-@pytest.mark.parametrize("sample_embeddings", [{"normalize": True}], indirect=True)
-def test_search(approx_search_strategy, sample_embeddings):
-    """
-    Verify that the search operation correctly retrieves and ranks 
-    both existing and newly added vector records.
-    """
-    # Create new records with unique IDs for testing
-    records = [
-        {"id": generate_id_bytes(), "content": "content 5", "metadata": {"index": 5}, "embedding": sample_embeddings},
-        {"id": generate_id_bytes(), "content": "content 6", "metadata": {"index": 6}, "embedding": sample_embeddings},
-        {"id": generate_id_bytes(), "content": "content 7", "metadata": {"index": 7}, "embedding": sample_embeddings},
-        {"id": generate_id_bytes(), "content": "content 8", "metadata": {"index": 8}, "embedding": sample_embeddings},
-    ]
-    approx_search_strategy.add(VectorRecords(dim=128, records=records))
+@pytest.mark.parametrize("sample_records", [{"num": 4}], indirect=True)
+def test_search(approx_search_strategy, sample_records):
+    """Test that search retrieves, ranks, and returns correct vector fields."""
+    approx_search_strategy.add(VectorRecords(dim=128, records=sample_records))
 
-    results = approx_search_strategy.search(sample_embeddings, top_k=4, include_vectors=True)
+    # Use the first embedding from sample_records as query
+    query_embedding = sample_records[0]["embedding"]
+    results = approx_search_strategy.search(query_embedding, top_k=4, include_vectors=True)
     id_to_res = {res["id"]: res for res in results}
 
     assert len(results) == 4, f"Expected 4 results, but got {len(results)}"
 
-    for record in records:
+    for record in sample_records:
         rec_id_str = approx_search_strategy._bytes_to_uuid_str(record["id"])
         
         # Only validate if the record actually made it into the top_k
