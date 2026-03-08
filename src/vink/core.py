@@ -38,6 +38,20 @@ class VinkDB:
         - L2-normalized embeddings for consistent distance metrics.
         - Supports Euclidean (L2) and dot product similarity.
         - Soft deletes: efficient deletion without data reorganization.
+    
+    Getting ANNConfig:
+        To customize ANN behavior, create an ANNConfig instance:
+        
+        >>> from vink import ANNConfig
+        >>> config = ANNConfig(
+        ...     num_subspaces=16,
+        ...     codebook_size=128,
+        ...     switch_ratio=4.0,
+        ...     quantizer="pq"
+        ... )
+        >>> db = VinkDB(dir_path="./data", dim=384, ann_config=config)
+        
+        For help with ANNConfig parameters, call ANNConfig.help()
     """
 
     @validate_arguments
