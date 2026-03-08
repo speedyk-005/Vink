@@ -76,7 +76,7 @@ class ExactSearch(BaseStrategy):
                 self.active_ids = np.empty((0,), dtype='S16')
                 return
 
-            self.active_vectors = np.array(self.vectors, dtype=np.float32)[active_indices]
+            self.active_vectors = np.vstack(self.vectors).astype(np.float32, copy=False)[active_indices]
             self.active_ids = np.array(self.ids, dtype='S16')[active_indices]
 
     def add(self, vector_records) -> list[str]:

@@ -49,7 +49,7 @@ class Tasker:
         self._once = once
                 
         self.running = False 
-        self.lastest_result = dict | None
+        self.lastest_result: dict | None = None
         
         self._build_event = Event() 
         self._worker = Thread(target=self._worker_loop, daemon=True)
@@ -100,12 +100,11 @@ class Tasker:
                 
             self.lastest_result = res
             self.running = False
-           
-            if self._once:
-                self._build_event.clear()
-                break
-              
+
             self._build_event.clear()
+
+            if self._once:
+                break
           
     def run(self) -> None:
         """Signal the worker to execute the task.
