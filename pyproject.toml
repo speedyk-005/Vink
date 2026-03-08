@@ -1,6 +1,8 @@
 [project]
 name = "vink"
 version = "0.1.0"
+description = "A vector database that automatically switches from slow-but-accurate search to fast-but-approximate search as your data grows, without you having to do anything."
+keywords = ["vector-database", "ann", "approximate-nearest-neighbor", "similarity-search", "embedding-vectors", "semantic-search", "rag", "retrieval-augmented-generation", "llm", "generative-ai", "product-quantization", "vector-search", "ai", "information-retrieval", "knowledge-base"]
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
