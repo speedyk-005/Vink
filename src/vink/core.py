@@ -1,10 +1,12 @@
 from typing import Callable, Literal
 from pathlib import Path
 import shutil
+import time
 import json
 import math
 from threading import Lock
 import numpy as np
+from threading import Thread
 
 import regex as re
 import pysqlite3 as sqlite3
@@ -18,7 +20,7 @@ from vink.utils.input_validation import (
 )
 
 from vink.tasker import Tasker
-from vink.models import VectorRecord, VectorRecords, ANNConfig
+from vink.models import VectorRecord, VectorRecords, AnnConfig
 from vink.utils.logging import log_info
 from vink.exceptions import VectorDimensionError, InvalidInputError
 
@@ -42,8 +44,8 @@ class VinkDB:
     Getting ANNConfig:
         To customize ANN behavior, create an ANNConfig instance:
         
-        >>> from vink import ANNConfig
-        >>> config = ANNConfig(
+        >>> from vink import AnnConfig
+        >>> config = AnnConfig(
         ...     num_subspaces=16,
         ...     codebook_size=128,
         ...     switch_ratio=4.0,
@@ -51,7 +53,7 @@ class VinkDB:
         ... )
         >>> db = VinkDB(dir_path="./data", dim=384, ann_config=config)
         
-        For help with ANNConfig parameters, call ANNConfig.help()
+        For help with AnnConfig parameters, call AnnConfig.help()
     """
 
     @validate_arguments
@@ -61,7 +63,7 @@ class VinkDB:
         dim: int,
         metric: Literal["euclidian", "dot"] = "euclidian",
         force_exact: bool = False,
-        ann_config: ANNConfig | None = None,
+        ann_config: AnnConfig | None = None,
         embedding_callback: Callable | None = None,
         overwrite: bool = False,
         verbose: bool = False,
@@ -86,10 +88,10 @@ class VinkDB:
             force_exact (bool, optional): If True, only exact calculation is used.
                 If False, switches between exact and ANN based on switch_ratio.
                 Defaults to False.
-            ann_config (ANNConfig | None, optional): Configuration for approximate nearest neighbor search.
+            ann_config (AnnConfig, optional): Configuration for approximate nearest neighbor search.
                 Only applicable when force_exact is False.
                 If not provided, defaults to ANNConfig with standard settings.
-            embedding_callback (Callable | None, optional): Callback function to generate embeddings
+            embedding_callback (Callable, optional): Callback function to generate embeddings
                 from content. If provided, 'embedding' key is optional in
                 vector records as it will be generated via this callback. Defaults to None.
             overwrite (bool, optional): Overwrite existing index if exists. Defaults to False.
@@ -109,7 +111,7 @@ class VinkDB:
 
         # Default the config with standard settings if force_exact is not true
         if not (self._force_exact or self._ann_config):
-            self._ann_config = ANNConfig()
+            self._ann_config = AnnConfig()
             
         self.embedding_callback = embedding_callback
         self.verbose = verbose
@@ -425,43 +427,58 @@ class VinkDB:
         )
         approx_strategy.fit(vectors, ids, self._ann_config)
         
+        log_info(self.verbose, "ANN index fit complete, switching strategy.")
+        
         # Automatically switch after successful build
-        self._switch_to_approx_with_strategy(approx_strategy)
+        self._switch_to_approx_strategy(approx_strategy)
 
         return {}
 
-    def _dump_buffer(self) -> None:
-        """Read buffer where deleted=0 and apply to self._strategy."""
-        cursor = self._conn.cursor()
-        cursor.execute("SELECT id, content, json(metadata), embedding FROM buffer WHERE deleted = 0")
-        buffer_rows = cursor.fetchall()
-        
-        if not buffer_rows:
-            return
-        
-        records = [
-            {
-                "id": id_bytes,
-                "content": content,
-                "metadata": json.loads(meta),
-                "embedding": np.frombuffer(embed, dtype=np.float32),
-            }
-            for id_bytes, content, meta, embed in buffer_rows
-        ]
-        self._strategy.add(VectorRecords(dim=self._dim, records=records))
-
-    def _switch_to_approx_with_strategy(self, new_strategy) -> None:
+    def _switch_to_approx_strategy(self, strategy) -> None:
         """Apply strategy switch with the given new_strategy."""
         # Swap strategy
         with self._lock:
-            self._strategy = new_strategy
+            self._strategy = strategy
 
         # Change the flag upfront to prevent new operations to use buffer
         self._ann_building = False
 
-        self._dump_buffer()
+        # Dump buffer in background with batching and pauses
+        dump_thread = Thread(target=self._dump_buffer_batched, daemon=True)
+        dump_thread.start()
+
+    def _dump_buffer_batched(self) -> None:
+        """Dump buffer to new strategy in background with batching and pauses."""
+        while True:
+            cursor = self._conn.cursor()
+            cursor.execute(
+                "SELECT id, content, json(metadata), embedding FROM buffer WHERE deleted = 0 LIMIT 5000"
+            )
+            buffer_rows = cursor.fetchall()
+            
+            if not buffer_rows:
+                break
+            
+            records = [
+                {
+                    "id": id_bytes,
+                    "content": content,
+                    "metadata": json.loads(meta),
+                    "embedding": np.frombuffer(embed, dtype=np.float32),
+                }
+                for id_bytes, content, meta, embed in buffer_rows
+            ]
+            
+            with self._lock:
+                self._strategy.add(VectorRecords(dim=self._dim, records=records))
+            
+            # Delete processed records
+            placeholders = ','.join('?' * len(buffer_rows))
+            cursor.execute(f"DELETE FROM buffer WHERE id IN ({placeholders})", [r[0] for r in buffer_rows])
+            self._conn.commit()
+            
+            log_info(self.verbose, "Buffer dump: added {} vectors to ANN index.", len(records))
+            
+            time.sleep(0.2)
         
-        # Clear buffer
-        cursor = self._conn.cursor()
-        cursor.execute("DELETE FROM buffer")
-        self._conn.commit()
+        log_info(self.verbose, "Buffer dump to ANN index completed.")

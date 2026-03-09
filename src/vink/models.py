@@ -10,7 +10,7 @@ from vink.utils.id_generation import generate_id_bytes
 from vink.utils.input_validation import validate_embedding, validate_id
 
 
-class ANNConfig(BaseModel):
+class AnnConfig(BaseModel):
     """Configuration for Approximate Nearest Neighbor (ANN) search settings."""
 
     num_subspaces: Annotated[int, Field(ge=1)] = Field(

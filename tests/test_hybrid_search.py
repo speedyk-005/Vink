@@ -2,7 +2,7 @@ import time
 import pytest
 
 from vink import VinkDB
-from vink.models import ANNConfig
+from vink.models import AnnConfig
 from vink.exceptions import InvalidInputError
 
 
@@ -19,7 +19,7 @@ def vinkdb(tmp_path, request, mocker):
         dir_path=tmp_path,
         dim=DIM,
         force_exact=force_exact,
-        ann_config=ANNConfig(num_subspaces=4, codebook_size=4),
+        ann_config=AnnConfig(num_subspaces=4, codebook_size=4),
         verbose=False,
     )
     

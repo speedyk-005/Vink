@@ -37,7 +37,7 @@ See Also:
 from importlib.metadata import PackageNotFoundError, version
 
 from vink.core import VinkDB
-from vink.models import ANNConfig
+from vink.models import AnnConfig
 from vink.exceptions import *
 
 try:

@@ -3,7 +3,7 @@ import numpy as np
 
 import pysqlite3 as sqlite3
 
-from vink.models import VectorRecords, ANNConfig
+from vink.models import VectorRecords, AnnConfig
 from vink.strategies.approximate_search import ApproximateSearch
 from vink.utils.id_generation import generate_id_bytes
 
@@ -32,7 +32,7 @@ def in_memory_db():
 @pytest.fixture(scope="module")
 def approx_search_strategy(in_memory_db):
     """Create an ApproximateSearchStrategy instance for testing."""
-    config = ANNConfig(num_subspaces=4, codebook_size=8)
+    config = AnnConfig(num_subspaces=4, codebook_size=8)
 
     strategy = ApproximateSearch(
         conn=in_memory_db,

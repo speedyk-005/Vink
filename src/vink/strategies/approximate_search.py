@@ -9,7 +9,7 @@ import nanopq
 import pysqlite3 as sqlite3
 
 from vink.strategies.base import BaseStrategy
-from vink.models import ANNConfig
+from vink.models import AnnConfig
 from vink.utils.logging import log_info
 from vink.exceptions import IndexNotFittedError, InvalidInputError
 
@@ -80,7 +80,7 @@ class ApproximateSearch(BaseStrategy):
         self,
         vectors: np.ndarray,
         active_ids: np.ndarray,
-        ann_config: ANNConfig,
+        ann_config: AnnConfig,
     ) -> None:
         """
         Initialize the Approximate Search index by training the Quantizer.
@@ -100,7 +100,7 @@ class ApproximateSearch(BaseStrategy):
             vectors (np.ndarray): A 2D array of shape (N, D) representing the N vectors 
                 of dimensionality D to be indexed.
             active_ids (np.ndarray): Array of active IDs corresponding to the vectors.
-            ann_config (ANNConfig): Configuration for approximate nearest neighbor search.
+            ann_config (AnnConfig): Configuration for approximate nearest neighbor search.
 
         Raises:
             RuntimeError: If called on an index that has already been fitted.

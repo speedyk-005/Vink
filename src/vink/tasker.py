@@ -88,12 +88,14 @@ class Tasker:
         Raises:
             TypeError: If task result is not a dictionary.
         """
+        import sys
         while True:
             self._build_event.wait()
 
             self.running = True
             
             res = self.task()
+                
             if not isinstance(res, dict):
                 self.running = False
                 raise TypeError(f"Task must return a dictionary, got {type(res).__name__}")
