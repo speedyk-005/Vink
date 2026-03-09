@@ -3,6 +3,7 @@ import pytest
 
 from vink import VinkDB
 from vink.models import ANNConfig
+from vink.exceptions import InvalidInputError
 
 
 DIM = 128
@@ -56,3 +57,22 @@ def test_force_exact(vinkdb, sample_records, mocker):
     
     # Stays exact despite mock
     assert vinkdb.strategy == "exact_search", "Should stay exact when force_exact=True"
+
+
+@pytest.mark.parametrize("sample_records", [{"num": 11000}], indirect=True)
+def test_first_batch_size_limit(vinkdb, sample_records):
+    """Test that first batch cannot exceed 10,000 vectors but subsequent batches can."""
+    # First batch with 11,000 records (exceeds limit)
+    with pytest.raises(InvalidInputError, match="First batch cannot exceed"):
+        vinkdb.add(sample_records[:11000])
+    
+    # Verify database is still empty
+    assert vinkdb.count() == 0, "Database should remain empty after failed add"
+    
+    # Add valid first batch (5,000 records)
+    vinkdb.add(sample_records[:5000])
+    assert vinkdb.count() == 5000, "First batch should be added successfully"
+    
+    # Second batch can exceed 10,000 (no limit on subsequent batches)
+    vinkdb.add(sample_records[5000:])
+    assert vinkdb.count() == 11000, "Subsequent batches should have no size limit"

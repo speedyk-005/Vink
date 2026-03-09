@@ -245,12 +245,24 @@ class VinkDB:
                 and 'embedding' keys. 'id' is optional
                 If not provided, a UUIDv7 will be auto-generated.
 
+        Note:
+            The first batch (when database is empty) is limited to 10,000 vectors to avoid
+            expensive initial index operations. This constraint only applies to the first add()
+            call. Subsequent batches can be any size.
+
         Returns:
             list[str]: List of assigned UUIDv7 IDs.
             
         Raises:
-            InvalidInputError: If validation fails.
+            InvalidInputError: If validation fails or if the first batch exceeds 10,000 vectors.
         """
+        # Prevent large first batch to avoid expensive initial ANN builds
+        if self.count() == 0 and len(vector_records) > 10000:
+            raise InvalidInputError(
+                f"First batch cannot exceed 10,000 vectors (got {len(vector_records)}). "
+                f"This limit applies only to the initial add() call when the database is empty."
+            )
+
         # Validate and convert to VectorRecords
         try:
             records = VectorRecords(
@@ -263,20 +275,20 @@ class VinkDB:
 
         log_info(self.verbose, "Adding {} vector records to index.", len(vector_records))
 
-        if self.strategy != "approximate_search" and self._should_switch():
+        if self.strategy == "exact_search" and self._ann_building:
             assigned_ids = [r.id for r in records.records]
-
-            if not self._ann_building:
-                self._ann_building = True
-                self._tasker.run()
-
             self._add_to_buffer(records)
-            
             log_info(self.verbose, "Successfully added {} records to buffer.", len(assigned_ids))
             return assigned_ids
 
         assigned_ids = self._strategy.add(records)
-        
+
+        # After adding, check if switch should be triggered based on new count
+        if self.strategy == "exact_search" and self._should_switch():
+            if not self._ann_building:
+                self._ann_building = True
+                self._tasker.run()
+            
         log_info(self.verbose, "Successfully added {} records to index.", len(assigned_ids))
         return assigned_ids
 
@@ -321,14 +333,19 @@ class VinkDB:
         """Count the number of active (non-deleted) vectors in the database.
         
         Returns:
-            int: The number of active vectors where deleted is 0.
+            int: The number of active vectors where deleted is 0, including buffered vectors.
         """
-        if self.strategy != "approximate_search":
-            return sum(self._strategy.mask)
-
         cursor = self._conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM records WHERE deleted = 0")
-        return cursor.fetchone()[0]
+        strategy_count = cursor.fetchone()[0]
+
+        # If ANN is building, also count buffered vectors
+        if self._ann_building:
+            cursor.execute("SELECT COUNT(*) FROM buffer WHERE deleted = 0")
+            buffer_count = cursor.fetchone()[0]
+            return strategy_count + buffer_count
+
+        return strategy_count
 
     @validate_arguments
     def search(
