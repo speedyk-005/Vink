@@ -1,7 +1,7 @@
 from functools import wraps
 from uuid import UUID
-import numpy as np
 
+import numpy as np
 from pydantic import ConfigDict, ValidationError, validate_call
 
 from vink.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError
@@ -79,19 +79,19 @@ def validate_embedding(vecs: list[float] | np.ndarray) -> np.ndarray:
     """
     Validate, cast, and L2-normalize input vectors.
 
-    Ensures the input is a valid numeric array, enforces a 2D (1, d) shape 
-    consistency, and projects the vector onto a unit sphere for optimized 
+    Ensures the input is a valid numeric array, enforces a 2D (1, d) shape
+    consistency, and projects the vector onto a unit sphere for optimized
     distance calculations.
 
     Args:
-        vecs (list[float] | np.ndarray): Input embedding. Accepts 1D arrays of 
+        vecs (list[float] | np.ndarray): Input embedding. Accepts 1D arrays of
             shape (d,) or 2D row vectors of shape (1, d).
 
     Returns:
         np.ndarray: A float32 row vector of shape (1, d) where ||v||₂ = 1.0.
 
     Raises:
-        InvalidInputError: If the input contains non-numeric values or has a 
+        InvalidInputError: If the input contains non-numeric values or has a
             zero-magnitude (null) norm, preventing normalization.
         VectorDimensionError: If the input dimensionality or shape is incompatible
             with a single-vector representation.
@@ -123,13 +123,14 @@ def validate_embedding(vecs: list[float] | np.ndarray) -> np.ndarray:
 
     return vecs / norm
 
+
 def validate_id(id: str | bytes) -> bytes:
     """
     Validate an ID or generate a new UUIDv7. Always returns 16 bytes.
-    
+
     Args:
         id (str | bytes): UUIDv7 as string or bytes.
-        
+
     Returns:
         bytes: 16-byte binary UUIDv7.
     """
@@ -140,11 +141,13 @@ def validate_id(id: str | bytes) -> bytes:
 
         if isinstance(id, bytes):
             if len(id) != 16:
-                raise InvalidIdError(f"Invalid UUID bytes length: expected 16, got {len(id)}")
+                raise InvalidIdError(
+                    f"Invalid UUID bytes length: expected 16, got {len(id)}"
+                )
             val = UUID(bytes=id)
         else:
             val = UUID(id)
-            
+
         if val.version != 7:
             raise InvalidIdError(f"Not a UUIDv7: {id}")
 

@@ -1,37 +1,36 @@
-from typing import Callable, Literal
-from pathlib import Path
-import shutil
-import time
 import json
 import math
-from threading import Lock
-import numpy as np
-from threading import Thread
+import shutil
+import time
+from pathlib import Path
+from threading import Lock, Thread
+from typing import Callable, Literal
 
+import numpy as np
 import regex as re
-import pysqlite3 as sqlite3
 from pydantic import ValidationError
 
+from vink.exceptions import InvalidInputError, VectorDimensionError
+from vink.models import AnnConfig, VectorRecords
+
+# The strategies are lazy imported
+from vink.sql_wrapper import SQLiteWrapper
+from vink.tasker import Tasker
 from vink.utils.input_validation import (
+    pretty_errors,
     validate_arguments,
     validate_embedding,
     validate_id,
-    pretty_errors,
 )
-
-from vink.tasker import Tasker
-from vink.models import VectorRecord, VectorRecords, AnnConfig
 from vink.utils.logging import log_info
-from vink.exceptions import VectorDimensionError, InvalidInputError
-
 
 
 class VinkDB:
     """
     Pure Python vector database with hybrid exact/approximate nearest neighbor search.
 
-    VinkDB automatically switches between exact brute-force search and approximate 
-    nearest neighbor (ANN) search based on dataset size, using Reconfigurable Inverted 
+    VinkDB automatically switches between exact brute-force search and approximate
+    nearest neighbor (ANN) search based on dataset size, using Reconfigurable Inverted
     Index (RII) and Product Quantization (PQ) for efficient ANN.
 
     Features:
@@ -40,10 +39,10 @@ class VinkDB:
         - L2-normalized embeddings for consistent distance metrics.
         - Supports Euclidean (L2) and dot product similarity.
         - Soft deletes: efficient deletion without data reorganization.
-    
+
     Getting ANNConfig:
         To customize ANN behavior, create an ANNConfig instance:
-        
+
         >>> from vink import AnnConfig
         >>> config = AnnConfig(
         ...     num_subspaces=16,
@@ -52,7 +51,7 @@ class VinkDB:
         ...     quantizer="pq"
         ... )
         >>> db = VinkDB(dir_path="./data", dim=384, ann_config=config)
-        
+
         For help with AnnConfig parameters, call AnnConfig.help()
     """
 
@@ -103,7 +102,7 @@ class VinkDB:
         self._dir_path = Path(dir_path)
         self._dim = dim
 
-        # L2 norm is the Euclidean distance metric; we use "l2" internally for compatibility with rii/nanopq
+        # Use "l2" internally for compatibility with rii/nanopq
         self._metric = "l2" if metric == "euclidian" else metric
 
         self._force_exact = force_exact
@@ -112,7 +111,7 @@ class VinkDB:
         # Default the config with standard settings if force_exact is not true
         if not (self._force_exact or self._ann_config):
             self._ann_config = AnnConfig()
-            
+
         self.embedding_callback = embedding_callback
         self.verbose = verbose
 
@@ -121,19 +120,19 @@ class VinkDB:
         if not self._in_memory:
             if overwrite and self._dir_path.exists():
                 shutil.rmtree(self._dir_path)
-            
+
             self._dir_path.mkdir(parents=True, exist_ok=True)
-            self.record_db = self._dir_path / "records.sqlite"
+            self._records_db_path = str(self._dir_path / "records.sqlite")
         else:
-            self.record_db = ":memory:"
-        
-        self._conn = sqlite3.connect(str(self.record_db), check_same_thread=False)
-        self._ensure_table_exists()
+            self._records_db_path = ":memory:"
+
+        self._records_db = SQLiteWrapper(self._records_db_path)
 
         # Initialize with ExactSearchStrategy by default
         from vink.strategies.exact_search import ExactSearch
+
         self._strategy = ExactSearch(
-            conn=self._conn,
+            db=self._records_db,
             dir_path=self._dir_path if not self._in_memory else None,
             dim=self._dim,
             in_memory=self._in_memory,
@@ -183,6 +182,10 @@ class VinkDB:
         """The ANN configuration settings as a dictionary."""
         return self._ann_config.model_dump() if self._ann_config else {}
 
+    def count(self) -> int:
+        """Count the number of active (non-deleted) vectors in the database."""
+        return self._records_db.count()
+
     def _validate_config(self) -> None:
         """
         Internal handshake to verify embedding dimensions and PQ constraints.
@@ -191,10 +194,10 @@ class VinkDB:
         if self.embedding_callback:
             try:
                 raw_vec = self.embedding_callback("vink_warmup_test")
-                
+
                 # This handles casting, shape normalization (1, d), and L2 projection
                 validated_vec = validate_embedding(raw_vec)
-                
+
                 if validated_vec.shape[-1] != self._dim:
                     raise VectorDimensionError(
                         f"Embedding callback output dimension ({validated_vec.shape[-1]}) "
@@ -204,39 +207,12 @@ class VinkDB:
                 # Let this specific error bubble up for the test/user
                 raise
             except Exception as e:
-                raise InvalidInputError(f"Embedding callback crashed during handshake: {e}")
+                raise InvalidInputError(
+                    f"Embedding callback crashed during handshake: {e}"
+                )
 
-        # Ann config validation
         if not self._force_exact:
             self._ann_config.validate_dim(self._dim)
-
-    def _ensure_table_exists(self) -> None:
-        """Create the SQLite database tables if they don't exist yet.""" 
-        cursor = self._conn.cursor()
-        
-        # Main records table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS records (
-                id BLOB PRIMARY KEY,        -- UUID bytes
-                content TEXT NOT NULL,
-                metadata BLOB NOT NULL,     -- JSON binary format
-                embedding BLOB,
-                deleted BOOLEAN DEFAULT 0   -- Soft-delete flag (0=active, 1=deleted)
-            )
-        """)
-        
-        # Buffer table for pending operations during ANN fit
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS buffer (
-                id BLOB PRIMARY KEY,
-                content TEXT NOT NULL,
-                metadata BLOB NOT NULL,
-                embedding BLOB,
-                deleted BOOLEAN DEFAULT 0
-            )
-        """)
-        
-        self._conn.commit()
 
     @validate_arguments
     def add(self, vector_records: list[dict]) -> list[str]:
@@ -254,7 +230,7 @@ class VinkDB:
 
         Returns:
             list[str]: List of assigned UUIDv7 IDs.
-            
+
         Raises:
             InvalidInputError: If validation fails or if the first batch exceeds 10,000 vectors.
         """
@@ -265,7 +241,6 @@ class VinkDB:
                 f"This limit applies only to the initial add() call when the database is empty."
             )
 
-        # Validate and convert to VectorRecords
         try:
             records = VectorRecords(
                 dim=self.dim,
@@ -273,14 +248,22 @@ class VinkDB:
                 embedding_callback=self.embedding_callback,
             )
         except ValidationError as e:
-            raise InvalidInputError(f"Invalid vector records: {pretty_errors(e)}") from None
+            raise InvalidInputError(
+                f"Invalid vector records: {pretty_errors(e)}"
+            ) from None
 
-        log_info(self.verbose, "Adding {} vector records to index.", len(vector_records))
+        log_info(
+            self.verbose, "Adding {} vector records to index.", len(vector_records)
+        )
 
         if self.strategy == "exact_search" and self._ann_building:
             assigned_ids = [r.id for r in records.records]
-            self._add_to_buffer(records)
-            log_info(self.verbose, "Successfully added {} records to buffer.", len(assigned_ids))
+            self._records_db.insert(records, buffer=True)
+            log_info(
+                self.verbose,
+                "Successfully added {} records to buffer.",
+                len(assigned_ids),
+            )
             return assigned_ids
 
         assigned_ids = self._strategy.add(records)
@@ -290,20 +273,11 @@ class VinkDB:
             if not self._ann_building:
                 self._ann_building = True
                 self._tasker.run()
-            
-        log_info(self.verbose, "Successfully added {} records to index.", len(assigned_ids))
-        return assigned_ids
 
-    def _add_to_buffer(self, records: VectorRecords) -> None:
-        """Add records to buffer table."""
-        cursor = self._conn.cursor()
-        for record in records.records:
-            cursor.execute(
-                "INSERT INTO buffer (id, content, metadata, embedding, deleted) "
-                "VALUES (?, ?, jsonb(?), ?, 0)",
-                (record.id, record.content, json.dumps(record.metadata), record.embedding.tobytes())
-            )
-        self._conn.commit()
+        log_info(
+            self.verbose, "Successfully added {} records to index.", len(assigned_ids)
+        )
+        return assigned_ids
 
     @validate_arguments
     def delete(self, ids: list[str]) -> None:
@@ -313,41 +287,19 @@ class VinkDB:
             ids (list[str]): List of UUIDv7 IDs to delete.
         """
         log_info(self.verbose, "Deleting {} vectors from index.", len(ids))
-        
+
         id_bytes = [validate_id(id_str) for id_str in ids]
 
         # If ANN is building, write to buffer for replay after switch
         if self.strategy != "approximate_search" and self._ann_building:
-            placeholders = ','.join('?' * len(id_bytes))
-            cursor = self._conn.cursor()
-            cursor.execute(
-                f"UPDATE buffer SET deleted = 1 WHERE id IN ({placeholders})",
-                id_bytes,
+            self._records_db.delete(id_bytes)
+            log_info(
+                self.verbose, "Marked {} vectors for deletion in buffer.", len(ids)
             )
-            self._conn.commit()
-            log_info(self.verbose, "Marked {} vectors for deletion in buffer.", len(ids))
             return
 
         self._strategy.delete(id_bytes)
         log_info(self.verbose, "Successfully deleted {} vectors.", len(ids))
-
-    def count(self) -> int:
-        """Count the number of active (non-deleted) vectors in the database.
-        
-        Returns:
-            int: The number of active vectors where deleted is 0, including buffered vectors.
-        """
-        cursor = self._conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM records WHERE deleted = 0")
-        strategy_count = cursor.fetchone()[0]
-
-        # If ANN is building, also count buffered vectors
-        if self._ann_building:
-            cursor.execute("SELECT COUNT(*) FROM buffer WHERE deleted = 0")
-            buffer_count = cursor.fetchone()[0]
-            return strategy_count + buffer_count
-
-        return strategy_count
 
     @validate_arguments
     def search(
@@ -369,11 +321,18 @@ class VinkDB:
             list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
-        log_info(self.verbose, "Searching for {} nearest neighbors using {}.", top_k, self.strategy)
-        
+        log_info(
+            self.verbose,
+            "Searching for {} nearest neighbors using {}.",
+            top_k,
+            self.strategy,
+        )
+
         query = validate_embedding(query_vec)
-        results = self._strategy.search(query_vec, top_k=top_k, include_vectors=include_vectors)
-        
+        results = self._strategy.search(
+            query_vec, top_k=top_k, include_vectors=include_vectors
+        )
+
         log_info(self.verbose, "Found {} results for query.", len(results))
         return results
 
@@ -405,10 +364,10 @@ class VinkDB:
     def _build_approx(self) -> dict:
         """
         Tasker task: Build ANN strategy in daemon thread.
-        
+
         This is the callable submitted to Tasker. It runs in a background
         daemon thread and returns the new strategy without side effects.
-        
+
         Returns:
             dict: An empty dictionnary to satisfy the tasker return type
         """
@@ -417,8 +376,9 @@ class VinkDB:
         ids = self._strategy.active_ids
 
         from vink.strategies.approximate_search import ApproximateSearch
+
         approx_strategy = ApproximateSearch(
-            conn=self._conn,
+            db=self._records_db,
             dir_path=self._dir_path if not self._in_memory else None,
             dim=self._dim,
             in_memory=self._in_memory,
@@ -426,9 +386,9 @@ class VinkDB:
             verbose=self.verbose,
         )
         approx_strategy.fit(vectors, ids, self._ann_config)
-        
+
         log_info(self.verbose, "ANN index fit complete, switching strategy.")
-        
+
         # Automatically switch after successful build
         self._switch_to_approx_strategy(approx_strategy)
 
@@ -440,45 +400,44 @@ class VinkDB:
         with self._lock:
             self._strategy = strategy
 
-        # Change the flag upfront to prevent new operations to use buffer
         self._ann_building = False
 
-        # Dump buffer in background with batching and pauses
         dump_thread = Thread(target=self._dump_buffer_batched, daemon=True)
         dump_thread.start()
 
     def _dump_buffer_batched(self) -> None:
         """Dump buffer to new strategy in background with batching and pauses."""
         while True:
-            cursor = self._conn.cursor()
-            cursor.execute(
-                "SELECT id, content, json(metadata), embedding FROM buffer WHERE deleted = 0 LIMIT 5000"
+            buffer_rows = self._records_db.fetch(
+                where="buffer = TRUE AND deleted = FALSE",
+                include_vectors=True,
+                params=[],
             )
-            buffer_rows = cursor.fetchall()
-            
+
             if not buffer_rows:
                 break
-            
+
             records = [
                 {
-                    "id": id_bytes,
-                    "content": content,
-                    "metadata": json.loads(meta),
-                    "embedding": np.frombuffer(embed, dtype=np.float32),
+                    "id": row["id"],
+                    "content": row["content"],
+                    "metadata": json.loads(row["metadata"]),
+                    "embedding": np.frombuffer(row["embedding"], dtype=np.float32),
                 }
-                for id_bytes, content, meta, embed in buffer_rows
+                for row in buffer_rows
             ]
-            
+
             with self._lock:
                 self._strategy.add(VectorRecords(dim=self._dim, records=records))
-            
-            # Delete processed records
-            placeholders = ','.join('?' * len(buffer_rows))
-            cursor.execute(f"DELETE FROM buffer WHERE id IN ({placeholders})", [r[0] for r in buffer_rows])
-            self._conn.commit()
-            
-            log_info(self.verbose, "Buffer dump: added {} vectors to ANN index.", len(records))
-            
+
+            self._records_db.clear_buffer()
+
+            log_info(
+                self.verbose,
+                "Buffer dump: added {} vectors to ANN index.",
+                len(records),
+            )
+
             time.sleep(0.2)
-        
+
         log_info(self.verbose, "Buffer dump to ANN index completed.")

@@ -1,9 +1,9 @@
 """
-Vink: A vector database that automatically switches from slow-but-accurate 
+Vink: A vector database that automatically switches from slow-but-accurate
 search to fast-but-approximate search as your data grows.
 
 Vink intelligently balances precision and performance by automatically switching
-between exact brute-force search (for small datasets) and approximate nearest 
+between exact brute-force search (for small datasets) and approximate nearest
 neighbor (ANN) search (for large datasets) without any manual configuration.
 
 Features:
@@ -37,8 +37,8 @@ See Also:
 from importlib.metadata import PackageNotFoundError, version
 
 from vink.core import VinkDB
-from vink.models import AnnConfig
 from vink.exceptions import *
+from vink.models import AnnConfig
 
 try:
     __version__ = version("vink")

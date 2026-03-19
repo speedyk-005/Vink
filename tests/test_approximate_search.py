@@ -1,14 +1,14 @@
-import pytest
 import numpy as np
-
 import pysqlite3 as sqlite3
+import pytest
 
-from vink.models import VectorRecords, AnnConfig
+from vink.models import AnnConfig, VectorRecords
+from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.approximate_search import ApproximateSearch
 from vink.utils.id_generation import generate_id_bytes
 
-
 IDS_TO_DELETE = []
+
 
 @pytest.fixture(scope="module")
 def in_memory_db():
@@ -35,7 +35,7 @@ def approx_search_strategy(in_memory_db):
     config = AnnConfig(num_subspaces=4, codebook_size=8)
 
     strategy = ApproximateSearch(
-        conn=in_memory_db,
+        db=SQLiteWrapper(":memory:"),
         dir_path=None,
         dim=128,
         in_memory=True,
@@ -47,26 +47,20 @@ def approx_search_strategy(in_memory_db):
     num_training = 10
     rng = np.random.default_rng(seed=42)
     train_vectors = rng.standard_normal((num_training, 128), dtype=np.float32)
-    
-    # Normalize
+
     norm = np.linalg.norm(train_vectors, axis=1, keepdims=True)
     train_vectors = train_vectors / (norm + 1e-9)
 
     # Generate active IDs for training vectors
     ids = [generate_id_bytes() for _ in range(num_training)]
-    strategy.fit(train_vectors, np.array(ids, dtype='S16'), config)
+    strategy.fit(train_vectors, np.array(ids, dtype="S16"), config)
 
-    # Manually set the records in the database to simulate exact search data before the switch
-    conn = strategy.conn
-    for id, vecs in zip(ids, train_vectors):
-        conn.cursor().execute(
-            """
-            INSERT INTO records (id, content, metadata, embedding, deleted) 
-            VALUES (?, "fit content", jsonb('{}'), ?, 0)
-            """,
-            (id, vecs),
-        )
-    conn.commit()
+    # Use wrapper insert to simulate exact search data before the switch
+    records = [
+        {"id": id, "content": "fit content", "metadata": {}, "embedding": vec}
+        for id, vec in zip(ids, train_vectors)
+    ]
+    strategy.db.insert(VectorRecords(dim=128, records=records))
 
     global IDS_TO_DELETE
     IDS_TO_DELETE = ids  # Store them for the deletion test case
@@ -78,9 +72,17 @@ def test_add(approx_search_strategy, sample_embeddings):
     """
     Test adding vector records by checking if internal structures are synced and SQLite count.
     """
-    records=[
-        {"content": "content 1", "metadata": {"index": 1}, "embedding": sample_embeddings},
-        {"content": "content 2", "metadata": {"index": 2}, "embedding": sample_embeddings},
+    records = [
+        {
+            "content": "content 1",
+            "metadata": {"index": 1},
+            "embedding": sample_embeddings,
+        },
+        {
+            "content": "content 2",
+            "metadata": {"index": 2},
+            "embedding": sample_embeddings,
+        },
     ]
     ids = approx_search_strategy.add(VectorRecords(dim=128, records=records))
 
@@ -91,12 +93,11 @@ def test_add(approx_search_strategy, sample_embeddings):
     expected = 2 + 10
 
     assert n_ids == n_map == expected, (
-        f"Sync Error! Expected {expected} records, but got: "
-        f"IDs={n_ids}, Map={n_map}"
+        f"Sync Error! Expected {expected} records, but got: IDs={n_ids}, Map={n_map}"
     )
 
-    cursor = approx_search_strategy.conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM records WHERE deleted = 0")
+    cursor = approx_search_strategy.db.conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = 0")
     db_count = cursor.fetchone()[0]
     assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
 
@@ -115,8 +116,8 @@ def test_delete(approx_search_strategy):
         f"IDs={n_ids}, Mask={n_mask}"
     )
 
-    cursor = approx_search_strategy.conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM records WHERE deleted = 0")
+    cursor = approx_search_strategy.db.conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = 0")
     db_count = cursor.fetchone()[0]
     assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
 
@@ -128,18 +129,25 @@ def test_search(approx_search_strategy, sample_records):
 
     # Use the first embedding from sample_records as query
     query_embedding = sample_records[0]["embedding"]
-    results = approx_search_strategy.search(query_embedding, top_k=4, include_vectors=True)
+    results = approx_search_strategy.search(
+        query_embedding, top_k=4, include_vectors=True
+    )
     id_to_res = {res["id"]: res for res in results}
 
     assert len(results) == 4, f"Expected 4 results, but got {len(results)}"
 
     for record in sample_records:
         rec_id_str = approx_search_strategy._bytes_to_uuid_str(record["id"])
-        
+
         # Only validate if the record actually made it into the top_k
         if rec_id_str in id_to_res:
             res_item = id_to_res[rec_id_str]
-            assert res_item["content"] == record["content"], f"Content mismatch for {rec_id_str}"
-            assert res_item["metadata"] == record["metadata"], f"Metadata mismatch for {rec_id_str}"
-            assert np.allclose(res_item["embedding"], record["embedding"]), f"Embedding mismatch for {rec_id_str}"
-        
+            assert res_item["content"] == record["content"], (
+                f"Content mismatch for {rec_id_str}"
+            )
+            assert res_item["metadata"] == record["metadata"], (
+                f"Metadata mismatch for {rec_id_str}"
+            )
+            assert np.allclose(res_item["embedding"], record["embedding"]), (
+                f"Embedding mismatch for {rec_id_str}"
+            )

@@ -1,11 +1,10 @@
-import json
 from pathlib import Path
 from threading import Lock
 from typing import Literal
+
 import numpy as np
 
-import pysqlite3 as sqlite3
-
+from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.base import BaseStrategy
 
 
@@ -20,7 +19,7 @@ class ExactSearch(BaseStrategy):
 
     def __init__(
         self,
-        conn: sqlite3.Connection,
+        db: SQLiteWrapper,
         dir_path: Path | None,
         dim: int,
         in_memory: bool,
@@ -31,7 +30,7 @@ class ExactSearch(BaseStrategy):
         Initialize the ExactSearch.
 
         Args:
-            conn (sqlite3.Connection): SQLite database connection for storing records.
+            db (SQLiteWrapper): SQLite wrapper for database operations.
             dir_path (Path | None): Path to store vector data. Defaults to None.
             dim (int): Dimension of the vectors.
             in_memory (bool): Whether using in-memory storage.
@@ -39,7 +38,7 @@ class ExactSearch(BaseStrategy):
             verbose (bool, optional): Enable verbose output. Defaults to False.
         """
         super().__init__(
-            conn=conn,
+            db=db,
             dir_path=dir_path,
             dim=dim,
             is_exact=True,
@@ -50,11 +49,11 @@ class ExactSearch(BaseStrategy):
 
         # Lock for thread-safe add/delete operations
         self._lock = Lock()
-        
+
         self.vectors: list[np.ndarray] = []
         self.ids: list[bytes] = []
         self.id_to_idx: dict[bytes, int] = {}  # Fast O(1) lookup for deletion
-        
+
         # Boolean mask for active/deleted status
         self.mask: np.ndarray = np.array([], dtype=bool)
 
@@ -70,14 +69,16 @@ class ExactSearch(BaseStrategy):
         with self._lock:
             # Get indices of non-deleted items (True in self.mask)
             active_indices = self.mask.nonzero()[0]
-        
+
             if len(active_indices) == 0:
                 self.active_vectors = np.empty((0, self.dim), dtype=np.float32)
-                self.active_ids = np.empty((0,), dtype='S16')
+                self.active_ids = np.empty((0,), dtype="S16")
                 return
 
-            self.active_vectors = np.vstack(self.vectors).astype(np.float32, copy=False)[active_indices]
-            self.active_ids = np.array(self.ids, dtype='S16')[active_indices]
+            self.active_vectors = np.vstack(self.vectors).astype(
+                np.float32, copy=False
+            )[active_indices]
+            self.active_ids = np.array(self.ids, dtype="S16")[active_indices]
 
     def add(self, vector_records) -> list[str]:
         """Add vectors to the index.
@@ -90,50 +91,39 @@ class ExactSearch(BaseStrategy):
         """
         with self._lock:
             assigned_ids = []
-            cursor = self.conn.cursor()
-            
+
             for record in vector_records.records:
-                # Extend in-memory storage
-                idx = len(self.ids)  # Current index
+                idx = len(self.ids)
                 self.vectors.append(record.embedding)
                 self.ids.append(record.id)
-                self.id_to_idx[record.id] = idx  # Fast O(1) lookup for deletion
+                self.id_to_idx[record.id] = idx
                 self.mask = np.append(self.mask, True)
-                
+
                 # Invalidate cache
                 self.active_vectors = None
                 self.active_ids = None
-                
-                # Insert into SQLite
-                self._perform_sqlite_insert(record)
-                
+
                 assigned_ids.append(self._bytes_to_uuid_str(record.id))
-            
-            self.conn.commit()
-        
+
+            self.db.insert(vector_records)
+
         return assigned_ids
 
     def delete(self, ids: list[bytes]) -> None:
         """
         Delete vectors from the index by their IDs.
-        
+
         Args:
             ids (list[bytes]): List of UUIDv7 IDs to delete.
         """
         with self._lock:
-            cursor = self.conn.cursor()
-            
             for id_bytes in ids:
                 idx = self.id_to_idx.get(id_bytes)
                 if idx is not None:
-                    # Mark as deleted in mask
                     self.mask[idx] = False
-            
-            # Delete in SQLite
-            self._perform_sqlite_delete(ids, soft=True)
-            
-            self.conn.commit()
-            
+
+            self.db.delete(ids, soft=True)
+
             # Invalidate cache
             self.active_vectors = None
             self.active_ids = None
@@ -182,16 +172,23 @@ class ExactSearch(BaseStrategy):
         """
 
         if self.metric == "dot":
-            ids, scores = self._cosine_similarity(query_vec, filtered_vectors, filtered_ids, top_k)
+            ids, scores = self._cosine_similarity(
+                query_vec, filtered_vectors, filtered_ids, top_k
+            )
         else:  # "l2/euclidian"
-            ids, scores = self._euclidian_distance(query_vec, filtered_vectors, filtered_ids, top_k)
-        
+            ids, scores = self._euclidian_distance(
+                query_vec, filtered_vectors, filtered_ids, top_k
+            )
+
         if not ids:
             return []
-        
-        # Re-query SQLite for full records of top_k IDs
-        id_to_row = self._perform_sqlite_fetch(ids, include_vectors)
-        
+
+        # Query SQLite for full records of top_k IDs
+        placeholders = ",".join("?" * len(ids))
+        where = f"id IN ({placeholders})"
+        rows = self.db.fetch(where=where, params=ids, include_vectors=include_vectors)
+        id_to_row = {row[0]: row for row in rows}
+
         return self._build_results(ids, scores, id_to_row, include_vectors)
 
     def _cosine_similarity(
@@ -223,7 +220,7 @@ class ExactSearch(BaseStrategy):
 
         top_ids = [ids[i] for i in sorted_indices]
         top_scores = similarities[sorted_indices]
-        
+
         return top_ids, top_scores
 
     def _euclidian_distance(
@@ -243,7 +240,7 @@ class ExactSearch(BaseStrategy):
             top_k (int): Number of top results to return.
 
         Returns:
-            tuple[list[bytes], np.ndarray]: Top-k IDs and distance scores, ordered by distance 
+            tuple[list[bytes], np.ndarray]: Top-k IDs and distance scores, ordered by distance
                 (ascending, closest first).
         """
         if not ids.any():
@@ -252,11 +249,13 @@ class ExactSearch(BaseStrategy):
         # Compute L2 distance: sqrt((x - y)^2)
         # Since vectors are normalized: ||x - y||^2 = 2 - 2*(x·y)
         similarities = (vectors @ query_vec.T).flatten()
-        distances = np.sqrt((2 - 2 * similarities).clip(min=0))  # Clip for numerical stability
-        
+        distances = np.sqrt(
+            (2 - 2 * similarities).clip(min=0)
+        )  # Clip for numerical stability
+
         # Sort by distance in ascending order (closest first)
         indices = np.argsort(distances)[:top_k]
         top_ids = [ids[i] for i in indices]
         top_scores = distances[indices]
-        
+
         return top_ids, top_scores
