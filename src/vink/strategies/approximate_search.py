@@ -11,6 +11,7 @@ from vink.exceptions import IndexNotFittedError, InvalidInputError
 from vink.models import AnnConfig
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.base import BaseStrategy
+from vink.tasker import Tasker
 from vink.utils.logging import log_info
 
 
@@ -66,6 +67,7 @@ class ApproximateSearch(BaseStrategy):
         self.index: rii.Rii | None = None
         self._is_fitted: bool = False
         self._delta_since_reconfig = 0
+        self._reconfig_tasker = Tasker(task=lambda: self._do_reconfigure())
 
         self.ids: list[bytes] = []
         self.id_to_idx: dict[bytes, int] = {}  # Fast O(1) lookup for deletion
@@ -190,6 +192,14 @@ class ApproximateSearch(BaseStrategy):
                 "on your training vectors before performing any index operations."
             )
 
+    def _do_reconfigure(self) -> dict:
+        """Tasker task: Reconfigure index in background thread idempotently."""
+        with self._lock:
+            self.index.reconfigure()
+            self._delta_since_reconfig = 0
+            log_info(self.verbose, "ANN index reconfigured.")
+        return {}
+
     def _ensure_cache(self) -> None:
         """Build cache of IDs if not already cached."""
         if self.active_ids is not None:
@@ -244,8 +254,7 @@ class ApproximateSearch(BaseStrategy):
             if self.reconfig_threshold > 0:
                 self._delta_since_reconfig += len(vector_records.records)
                 if self._delta_since_reconfig >= self.reconfig_threshold:
-                    self.index.reconfigure()
-                    self._delta_since_reconfig = 0
+                    self._reconfig_tasker.run()
 
         return assigned_ids
 
