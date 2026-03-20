@@ -1,8 +1,8 @@
 """
-Vink Vector Database: Automatic ANN Switch Demo
+Vink Vector Database: ANN Switch Demo
 
-This script demonstrates the automatic switch from exact search to approximate
-search (ANN) as the dataset grows, showing real performance improvements.
+This script demonstrates the automatic and early switch from exact search to
+approximate search (ANN), accounting for training time overhead.
 """
 
 import time
@@ -25,18 +25,19 @@ def demonstrate_automatic_switch():
     )
 
     dim = 128
-    switch_ratio = 2.0
-    # Add 5000 at a time until switch triggers
-    max_vectors = 50000
+    switch_exp = 0.5
+    max_vectors = 75000
     batch_size = 5000
-    threshold = int((switch_ratio * 1000) ** 2 / dim)
+    min_required = 32 * 256
+    threshold = max(min_required, int(1_000_000 / dim))
 
     intro_text = textwrap.dedent(f"""
         [bold]Setup:[/bold]
           • Vector Dimension: {dim}
-          • ANN switch_ratio: {switch_ratio}
+          • ANN switch_exp: {switch_exp}
+          • Min vectors required: {min_required:,} (num_subspaces × codebook_size)
           • Automatic switch enabled
-          • Switch threshold: sqrt(128 × N) / 1000 >= {switch_ratio} => N >= {threshold:,}
+          • Switch threshold: (dim × N / 1M)^{switch_exp} >= 1.0 => N >= {threshold:,}
 
         [bold]What to watch:[/bold]
           • Strategy column shows when switch happens (exact_search => approximate_search)
@@ -53,16 +54,16 @@ def demonstrate_automatic_switch():
     table.add_column("Status", justify="center")
 
     # Create DB with automatic switching enabled
-    config = AnnConfig(switch_ratio=switch_ratio)
+    config = AnnConfig(switch_exp=switch_exp)
     db = VinkDB(dir_path=":memory:", dim=dim, ann_config=config, verbose=True)
 
     count = 0
     ann_switched = False
-    while count < max_vectors and not ann_switched:
+    # Add 5000 at a time until switch triggers
+    while count < max_vectors:
         count += batch_size
         batch_vectors = np.random.randn(batch_size, dim).astype(np.float32)
 
-        # Add to DB
         start_add = timeit.default_timer()
         records = [
             {"content": f"doc_{i}", "embedding": v} for i, v in enumerate(batch_vectors)
@@ -70,12 +71,8 @@ def demonstrate_automatic_switch():
         db.add(records)
         add_time = timeit.default_timer() - start_add
 
-        while db._ann_building:
-            time.sleep(0.5)
-
         strategy = db.strategy
 
-        # Search and measure
         try:
             query_vectors = np.random.randn(5, dim).astype(np.float32)
             start_search = timeit.default_timer()
@@ -87,7 +84,10 @@ def demonstrate_automatic_switch():
             avg_query_ms = 0.0
 
         # Status indicator
-        if strategy == "approximate_search":
+        if db._ann_building:
+            status = "⚙ Building ANN"
+            style = "yellow"
+        elif strategy == "approximate_search":
             status = "✓ ANN Active"
             style = "green"
             ann_switched = True
@@ -102,7 +102,11 @@ def demonstrate_automatic_switch():
             f"{add_time:.3f}",
             status,
         )
-        time.sleep(0.5)
+        time.sleep(1)
+
+        strategy = db.strategy
+        if strategy == "approximate_search":
+            ann_switched = True
 
     console.print(table)
     console.print()
@@ -115,7 +119,6 @@ def demonstrate_automatic_switch():
         )
 
 
-# Demonstrate the automatic switch
 if __name__ == "__main__":
     try:
         demonstrate_automatic_switch()
@@ -125,17 +128,3 @@ if __name__ == "__main__":
         import traceback
 
         traceback.print_exc()
-
-
-"""
-before
-┏━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
-┃ Vectors ┃      Strategy      ┃ Avg Query (ms) ┃ Insert Time (s) ┃    Status    ┃
-┡━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
-│  5,000  │    exact_search    │     25.576     │      1.748      │ Exact Search │
-│ 10,000  │    exact_search    │     0.000      │      2.840      │ Exact Search │
-│ 20,000  │    exact_search    │     0.000      │      5.805      │ Exact Search │
-│ 50,000  │    exact_search    │     38.635     │     10.775      │ Exact Search │
-│ 100,000 │ approximate_search │     0.000      │     35.361      │ ✓ ANN Active │
-└─────────┴────────────────────┴────────────────┴─────────────────┴──────────────┘
-"""

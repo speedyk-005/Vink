@@ -40,6 +40,7 @@ class BaseStrategy(ABC):
             verbose (bool, optional): Enable verbose output. Defaults to False.
         """
         self.db = db
+        # Reserved for future index persistence (save/load to disk)
         self.dir_path = dir_path
         self.is_exact = is_exact
         self.dim = dim
@@ -51,11 +52,13 @@ class BaseStrategy(ABC):
             raise ValueError("in_memory must be True if no dir_path is provided.")
 
     @abstractmethod
-    def add(self, vector_records: VectorRecords) -> list[str]:
+    def add(self, vector_records: VectorRecords, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
             vector_records (VectorRecords): Container with list of vector records.
+            is_buffer (bool): If True, records are already in SQLite (buffer replay).
+                Subclasses should skip re-inserting to avoid duplicate key errors.
 
         Returns:
             list[str]: List of assigned UUIDv7 IDs.

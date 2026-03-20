@@ -132,9 +132,9 @@ class ApproximateSearch(BaseStrategy):
 
         self.reconfig_threshold = ann_config.reconfig_threshold
 
-        # Sample subset for training (max 5000 vectors to limit training time)
+        # Sample subset for training (max 1000 vectors to limit training time)
         # Keep all vectors for the index, only sample for codec training
-        max_train_size = 5000
+        max_train_size = 1000
         n_vectors = len(vectors)
         if n_vectors > max_train_size:
             train_indices = random.sample(range(n_vectors), k=max_train_size)
@@ -205,7 +205,7 @@ class ApproximateSearch(BaseStrategy):
 
             self.active_ids = np.array(self.ids, dtype="S16")[active_indices]
 
-    def add(self, vector_records) -> list[str]:
+    def add(self, vector_records, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
@@ -224,7 +224,7 @@ class ApproximateSearch(BaseStrategy):
 
             for record in vector_records.records:
                 idx = len(self.ids)
-                self.index.add(record.embedding)
+                # self.index.add(record.embedding)
                 self.ids.append(record.id)
                 self.id_to_idx[record.id] = idx
                 self.mask = np.append(self.mask, True)
@@ -234,7 +234,18 @@ class ApproximateSearch(BaseStrategy):
 
                 assigned_ids.append(self._bytes_to_uuid_str(record.id))
 
-            self.db.insert(vector_records)
+            embeddings = np.vstack(
+                [rec.embedding for rec in vector_records.records]
+            ).astype(np.float32, copy=False)
+            self.index.add(embeddings)
+            if not is_buffer:
+                self.db.insert(vector_records)
+
+            if self.reconfig_threshold > 0:
+                self._delta_since_reconfig += len(vector_records.records)
+                if self._delta_since_reconfig >= self.reconfig_threshold:
+                    self.index.reconfigure()
+                    self._delta_since_reconfig = 0
 
         return assigned_ids
 

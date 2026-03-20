@@ -24,9 +24,9 @@ class AnnConfig(BaseModel):
         256,
         description="Number of centroids per subspace. Affects memory usage and search accuracy.",
     )
-    switch_ratio: Annotated[float, Field(ge=2, le=16)] = Field(
-        4,
-        description="Ratio threshold for switching between exact and approximate search. Recommended values are powers of 2.",
+    switch_exp: Annotated[float, Field(ge=0.25, le=5)] = Field(
+        1.0,
+        description="Power-law exponent for complexity: values >1.0 stay lower for small data but trigger the ANN switch faster after 1M total operations (D * N).",
     )
     reconfig_threshold: Annotated[int, Field(ge=0)] = Field(
         1000,

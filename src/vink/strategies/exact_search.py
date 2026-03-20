@@ -80,11 +80,12 @@ class ExactSearch(BaseStrategy):
             )[active_indices]
             self.active_ids = np.array(self.ids, dtype="S16")[active_indices]
 
-    def add(self, vector_records) -> list[str]:
+    def add(self, vector_records, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
             vector_records (VectorRecords): Container with list of vector records.
+            is_buffer (bool): If True, records are already in SQLite. Defaults to False.
 
         Returns:
             list[str]: List of assigned UUIDv7 IDs.
@@ -105,7 +106,8 @@ class ExactSearch(BaseStrategy):
 
                 assigned_ids.append(self._bytes_to_uuid_str(record.id))
 
-            self.db.insert(vector_records)
+            if not is_buffer:
+                self.db.insert(vector_records)
 
         return assigned_ids
 
