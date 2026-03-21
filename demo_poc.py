@@ -16,28 +16,28 @@ from vink import VinkDB, AnnConfig
 
 console = Console()
 
+DIM = 128
+SWITCH_EXP = 1
+MAX_VECTORS = 55000
+BATCH_SIZE = 5000
+MIN_REQUIRED = 32 * 256  # num_subspaces × codebook_size
+THRESHOLD = max(MIN_REQUIRED, int(1_000_000 / DIM))
+
 
 def demonstrate_automatic_switch():
     """Show the automatic switch from exact to ANN search as vectors grow."""
     console.print(
-        f"\n{'=' * 75}\nAUTOMATIC ANN SWITCH DEMONSTRATION\n{'=' * 75}\n",
+        f"\n{'=' * 50}\nAUTOMATIC ANN SWITCH DEMONSTRATION\n{'=' * 50}\n",
         style="bold cyan",
     )
 
-    dim = 128
-    switch_exp = 0.5
-    max_vectors = 75000
-    batch_size = 5000
-    min_required = 32 * 256
-    threshold = max(min_required, int(1_000_000 / dim))
-
     intro_text = textwrap.dedent(f"""
         [bold]Setup:[/bold]
-          • Vector Dimension: {dim}
-          • ANN switch_exp: {switch_exp}
-          • Min vectors required: {min_required:,} (num_subspaces × codebook_size)
+          • Vector Dimension: {DIM}
+          • ANN switch_exp: {SWITCH_EXP}
+          • Min vectors required: {MIN_REQUIRED:,} (num_subspaces × codebook_size)
           • Automatic switch enabled
-          • Switch threshold: (dim × N / 1M)^{switch_exp} >= 1.0 => N >= {threshold:,}
+          • Switch threshold: (dim × N / 1M)^{SWITCH_EXP} >= 1.0 => N >= {THRESHOLD:,}
 
         [bold]What to watch:[/bold]
           • Strategy column shows when switch happens (exact_search => approximate_search)
@@ -54,15 +54,14 @@ def demonstrate_automatic_switch():
     table.add_column("Status", justify="center")
 
     # Create DB with automatic switching enabled
-    config = AnnConfig(switch_exp=switch_exp)
-    db = VinkDB(dir_path=":memory:", dim=dim, ann_config=config, verbose=True)
+    config = AnnConfig(switch_exp=SWITCH_EXP)
+    db = VinkDB(dir_path=":memory:", dim=DIM, ann_config=config, verbose=True)
 
     count = 0
     ann_switched = False
-    # Add 5000 at a time until switch triggers
-    while count < max_vectors:
-        count += batch_size
-        batch_vectors = np.random.randn(batch_size, dim).astype(np.float32)
+    while count < MAX_VECTORS:
+        count += BATCH_SIZE
+        batch_vectors = np.random.randn(BATCH_SIZE, DIM).astype(np.float32)
 
         start_add = timeit.default_timer()
         records = [
@@ -74,7 +73,7 @@ def demonstrate_automatic_switch():
         strategy = db.strategy
 
         try:
-            query_vectors = np.random.randn(5, dim).astype(np.float32)
+            query_vectors = np.random.randn(5, DIM).astype(np.float32)
             start_search = timeit.default_timer()
             for q in query_vectors:
                 db.search(q, top_k=5)

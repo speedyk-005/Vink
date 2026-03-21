@@ -11,7 +11,6 @@ from vink.exceptions import IndexNotFittedError, InvalidInputError
 from vink.models import AnnConfig
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.base import BaseStrategy
-from vink.tasker import Tasker
 from vink.utils.logging import log_info
 
 
@@ -66,10 +65,9 @@ class ApproximateSearch(BaseStrategy):
         self.index: rii.Rii | None = None
         self._is_fitted: bool = False
         self._delta_since_reconfig = 0
-        self._reconfig_tasker = Tasker(task=lambda: self._do_reconfigure())
 
         self.ids: list[bytes] = []
-        self.id_to_idx: dict[bytes, int] = {}  # Fast O(1) lookup for deletion
+        self.id_to_idx: dict[bytes, int] = {}
 
         # Boolean mask for active/deleted status
         self.mask: np.ndarray = np.array([], dtype=bool)
@@ -114,7 +112,6 @@ class ApproximateSearch(BaseStrategy):
 
         log_info(self.verbose, "Starting ANN index fit with {} vectors.", len(vectors))
 
-        # Validate that codebook_size is not greater than training vector count
         if ann_config.codebook_size >= len(vectors):
             raise InvalidInputError(
                 f"Codebook size ({ann_config.codebook_size}) must be strictly less than "
@@ -192,12 +189,11 @@ class ApproximateSearch(BaseStrategy):
             )
 
     def _do_reconfigure(self) -> dict:
-        """Tasker task: Reconfigure index in background thread idempotently."""
-        with self._rwlock.gen_wlock():
-            self.index.reconfigure()
-            self._delta_since_reconfig = 0
-            log_info(self.verbose, "ANN index reconfigured.")
-        return {}
+        """Reconfigure index in background thread without blocking queries."""
+        log_info(self.verbose, "ANN index reconfiguration in progress (this may take a moment)...")
+        self.index.reconfigure()
+        self._delta_since_reconfig = 0
+        log_info(self.verbose, "ANN index reconfigured.")
 
     def _ensure_cache(self) -> None:
         """Build cache of IDs if not already cached."""
@@ -229,30 +225,24 @@ class ApproximateSearch(BaseStrategy):
 
         with self._rwlock.gen_wlock():
             assigned_ids = []
+            embeddings = []
 
             for record in vector_records.records:
                 idx = len(self.ids)
-                # self.index.add(record.embedding)
                 self.ids.append(record.id)
                 self.id_to_idx[record.id] = idx
                 self.mask = np.append(self.mask, True)
-
-                # Invalidate cache
                 self.active_ids = None
-
+                embeddings.append(record.embedding)
                 assigned_ids.append(self._bytes_to_uuid_str(record.id))
 
-            embeddings = np.vstack(
-                [rec.embedding for rec in vector_records.records]
-            )
-            self.index.add(embeddings)
-            if not is_buffer:
-                self.db.insert(vector_records)
+        self.index.add(np.vstack(embeddings))
+        if not is_buffer:
+            self.db.insert(vector_records)
 
-            if self.reconfig_threshold > 0:
-                self._delta_since_reconfig += len(vector_records.records)
-                if self._delta_since_reconfig >= self.reconfig_threshold:
-                    self._reconfig_tasker.run()
+        self._delta_since_reconfig += len(vector_records.records)
+        if self._delta_since_reconfig >= self.reconfig_threshold:
+            self._do_reconfigure()
 
         return assigned_ids
 

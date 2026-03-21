@@ -389,7 +389,6 @@ class VinkDB:
 
         # Automatically switch after successful build
         self._switch_to_approx_strategy(approx_strategy)
-        return {}
 
     def _switch_to_approx_strategy(self, strategy) -> None:
         with self._rwlock.gen_wlock():
@@ -416,15 +415,23 @@ class VinkDB:
             for row in buffer_rows
         ]
 
-        with self._rwlock.gen_wlock():
-             self._strategy.add(VectorRecords(dim=self._dim, records=records), is_buffer=True)
+        Thread(
+            target=lambda: self._drain_buffer(strategy, records),
+            daemon=True,
+        ).start()
 
+    def _drain_buffer(self, strategy, records: list[dict]) -> None:
+        """Drain the buffer into the ANN index in a background thread.
+
+        This runs as a daemon thread so that add() and search() calls
+        can proceed immediately after the strategy swap, without waiting
+        for the buffer dump to complete.
+        """
+        strategy.add(VectorRecords(dim=self._dim, records=records), is_buffer=True)
         self._records_db.clear_buffer()
-
         log_info(
             self.verbose,
             "Buffer dump: added {} vectors to ANN index.",
             len(records),
         )
-
         log_info(self.verbose, "Buffer dump to ANN index completed.")
