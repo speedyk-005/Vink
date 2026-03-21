@@ -1,6 +1,6 @@
 import random
 from pathlib import Path
-from threading import Lock
+from readerwriterlock import rwlock
 from typing import Literal
 
 import nanopq
@@ -61,8 +61,7 @@ class ApproximateSearch(BaseStrategy):
             verbose=verbose,
         )
 
-        # Lock for thread-safe add/delete operations
-        self._lock = Lock()
+        self._rwlock = rwlock.RWLockFair()
 
         self.index: rii.Rii | None = None
         self._is_fitted: bool = False
@@ -194,7 +193,7 @@ class ApproximateSearch(BaseStrategy):
 
     def _do_reconfigure(self) -> dict:
         """Tasker task: Reconfigure index in background thread idempotently."""
-        with self._lock:
+        with self._rwlock.gen_wlock():
             self.index.reconfigure()
             self._delta_since_reconfig = 0
             log_info(self.verbose, "ANN index reconfigured.")
@@ -205,15 +204,14 @@ class ApproximateSearch(BaseStrategy):
         if self.active_ids is not None:
             return
 
-        with self._lock:
-            # Get indices of non-deleted items (True in self.mask)
-            active_indices = self.mask.nonzero()[0]
+        # Caller holds the lock; no nested lock acquisition.
+        active_indices = self.mask.nonzero()[0]
 
-            if len(active_indices) == 0:
-                self.active_ids = np.empty((0,), dtype="S16")
-                return
+        if len(active_indices) == 0:
+            self.active_ids = np.empty((0,), dtype="S16")
+            return
 
-            self.active_ids = np.array(self.ids, dtype="S16")[active_indices]
+        self.active_ids = np.array(self.ids, dtype="S16")[active_indices]
 
     def add(self, vector_records, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
@@ -229,7 +227,7 @@ class ApproximateSearch(BaseStrategy):
         """
         self._validate_fitted()
 
-        with self._lock:
+        with self._rwlock.gen_wlock():
             assigned_ids = []
 
             for record in vector_records.records:
@@ -246,7 +244,7 @@ class ApproximateSearch(BaseStrategy):
 
             embeddings = np.vstack(
                 [rec.embedding for rec in vector_records.records]
-            ).astype(np.float32, copy=False)
+            )
             self.index.add(embeddings)
             if not is_buffer:
                 self.db.insert(vector_records)
@@ -270,7 +268,7 @@ class ApproximateSearch(BaseStrategy):
         """
         self._validate_fitted()
 
-        with self._lock:
+        with self._rwlock.gen_wlock():
             for id_bytes in ids:
                 idx = self.id_to_idx.get(id_bytes)
                 if idx is not None:
@@ -303,28 +301,28 @@ class ApproximateSearch(BaseStrategy):
             IndexNotFittedError: If called on an index that has not been fitted yet.
         """
         self._validate_fitted()
-        self._ensure_cache()
-
-        filtered_ids = self.active_ids
-
-        # TODO: support metadata filtering
-        """
-        # Query SQLite for active IDs (structure for metadata filtering later)
-        if metadata_filter_exists:  # (Future capability)
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT id FROM records WHERE ... AND deleted = 0")
-            match_set = {row[0] for row in cursor.fetchall()}
-            
-            # Create the mask against your ACTIVE (cached) IDs
-            # This keeps the indices perfectly aligned with your active_vectors matrix
-            temp_mask = np.array([uid in match_set for uid in self.active_ids])
-            filtered_ids = self.active_ids[temp_mask] 
-        else:
-            # Use cached versions
+        with self._rwlock.gen_rlock():
+            self._ensure_cache()
             filtered_ids = self.active_ids
-        """
 
-        ids, scores = self._query_index(query_vec, filtered_ids, top_k)
+            # TODO: support metadata filtering
+            """
+            # Query SQLite for active IDs (structure for metadata filtering later)
+            if metadata_filter_exists:  # (Future capability)
+                cursor = self.conn.cursor()
+                cursor.execute("SELECT id FROM records WHERE ... AND deleted = 0")
+                match_set = {row[0] for row in cursor.fetchall()}
+
+                # Create the mask against your ACTIVE (cached) IDs
+                # This keeps the indices perfectly aligned with your active_vectors matrix
+                temp_mask = np.array([uid in match_set for uid in self.active_ids])
+                filtered_ids = self.active_ids[temp_mask]
+            else:
+                # Use cached versions
+                filtered_ids = self.active_ids
+            """
+
+            ids, scores = self._query_index(query_vec, filtered_ids, top_k)
 
         if not ids:
             return []

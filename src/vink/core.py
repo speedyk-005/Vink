@@ -2,7 +2,8 @@ import json
 import math
 import shutil
 from pathlib import Path
-from threading import Lock, Thread
+from readerwriterlock import rwlock
+from threading import Thread
 from typing import Callable, Literal
 
 import numpy as np
@@ -142,8 +143,8 @@ class VinkDB:
 
         # Threading components for ANN auto-switch
         self._ann_building = False
-        self._lock = Lock()
-        self._tasker = Tasker(task=lambda: self._build_approx(), once=True)
+        self._rwlock = rwlock.RWLockFair()
+        self._tasker = Tasker(task=lambda: self._prepare_approx_strategy(), once=True)
 
     @property
     def dir_path(self) -> Path:
@@ -358,7 +359,7 @@ class VinkDB:
         complexity = (total_ops / threshold_ops) ** cfg.switch_exp
         return complexity >= 1.0
 
-    def _build_approx(self) -> dict:
+    def _prepare_approx_strategy(self) -> dict:
         """
         Tasker task: Build ANN strategy in daemon thread.
 
@@ -388,11 +389,10 @@ class VinkDB:
 
         # Automatically switch after successful build
         self._switch_to_approx_strategy(approx_strategy)
-
         return {}
 
     def _switch_to_approx_strategy(self, strategy) -> None:
-        with self._lock:
+        with self._rwlock.gen_wlock():
             self._strategy = strategy
 
         self._ann_building = False
@@ -416,7 +416,7 @@ class VinkDB:
             for row in buffer_rows
         ]
 
-        with self._lock:
+        with self._rwlock.gen_wlock():
              self._strategy.add(VectorRecords(dim=self._dim, records=records), is_buffer=True)
 
         self._records_db.clear_buffer()

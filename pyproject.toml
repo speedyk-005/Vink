@@ -25,6 +25,7 @@ classifiers = [
 
 dependencies = [
     "rii>=0.2.12,<1.0",
+    "readerwriterlock>=1.0.9,<2.0",
 
     # pysqlite3 0.6 is the only version with prebuilt wheels.
     # 0.7 hasn't been released yet, so we're sticking with 0.6 for now.
