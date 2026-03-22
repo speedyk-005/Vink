@@ -3,6 +3,7 @@ from pathlib import Path
 from readerwriterlock import rwlock
 from typing import Literal
 
+from loguru import logger
 import nanopq
 import numpy as np
 import rii
@@ -38,7 +39,8 @@ class ApproximateSearch(BaseStrategy):
         dim: int,
         in_memory: bool,
         metric: Literal["euclidean", "cosine"],
-        verbose: bool = False,
+        verbose: bool,
+        ann_config: AnnConfig,
     ) -> None:
         """
         Initialize the ApproximateSearch.
@@ -50,6 +52,7 @@ class ApproximateSearch(BaseStrategy):
             in_memory (bool): Whether using in-memory storage.
             metric (Literal["euclidean", "dot"]): Distance metric to use.
             verbose (bool): Enable verbose output.
+            ann_config (AnnConfig): ANN configuration.
         """
         super().__init__(
             db=db,
@@ -65,10 +68,10 @@ class ApproximateSearch(BaseStrategy):
         self._rwlock = rwlock.RWLockFair()
 
         self.index: rii.Rii | None = None
-        self._is_fitted: bool = False
         self._delta_since_reconfig = 0
+        self._ann_config = ann_config
 
-        self.ids: list[bytes] = []
+        self.all_ids: list[bytes] = []
         self.id_to_idx: dict[bytes, int] = {}
 
         # Boolean mask for active/deleted status
@@ -81,7 +84,6 @@ class ApproximateSearch(BaseStrategy):
         self,
         vectors: np.ndarray,
         active_ids: np.ndarray,
-        ann_config: AnnConfig,
     ) -> None:
         """
         Initialize the Approximate Search index by training the Quantizer.
@@ -92,52 +94,37 @@ class ApproximateSearch(BaseStrategy):
         of codebooks across the feature space, improving clustering stability
         and reconstruction accuracy.
 
-        Warning:
-            This method is non-reentrant. Once the index has been fitted, it is
-            locked into this configuration for the life of the database. Invoking
-            this method more than once will raise an error.
-
         Args:
             vectors (np.ndarray): A 2D array of shape (N, D) representing the N vectors
                 of dimensionality D to be indexed.
             active_ids (np.ndarray): Array of active IDs corresponding to the vectors.
-            ann_config (AnnConfig): Configuration for approximate nearest neighbor search.
-
-        Raises:
-            RuntimeError: If called on an index that has already been fitted.
         """
-        if self._is_fitted:
-            raise RuntimeError(
-                f"Index already initialized for {self.dir_path or 'in-memory storage'}. "
-                "The quantization parameters cannot be modified after fitting."
-            )
-
         log_info(self.verbose, "Starting ANN index fit with {} vectors.", len(vectors))
 
-        if ann_config.codebook_size >= len(vectors):
+        if self._ann_config.codebook_size >= len(vectors):
             raise InvalidInputError(
-                f"Codebook size ({ann_config.codebook_size}) must be strictly less than "
+                f"Codebook size ({self._ann_config.codebook_size}) must be strictly less than "
                 f"the number of training vectors ({len(vectors)}). "
                 "This constraint is required by Product Quantization."
             )
 
         self.active_ids = active_ids
-        self.ids = list(active_ids)
+        self.all_ids = list(active_ids)
 
         # Build id_to_idx mapping
-        self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.ids)}
+        self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
 
         # Initialize mask - all True since these are active
-        self.mask = np.ones(len(self.ids), dtype=bool)
+        self.mask = np.ones(len(self.all_ids), dtype=bool)
 
-        self.reconfig_threshold = ann_config.reconfig_threshold
+        self.reconfig_threshold = self._ann_config.reconfig_threshold
 
-        # Sample subset for training (max 1000 vectors to limit training time)
-        # Keep all vectors for the index, only sample for codec training
+        # Sample subset for training for codec training
         max_train_size = 1000
         n_vectors = len(vectors)
         if n_vectors > max_train_size:
-            train_indices = random.sample(range(n_vectors), k=max_train_size)
+            rng = np.random.default_rng()
+            train_indices = rng.choice(n_vectors, size=max_train_size, replace=False)
             train_vectors = vectors[train_indices]
         else:
             train_vectors = vectors
@@ -146,18 +133,18 @@ class ApproximateSearch(BaseStrategy):
             self.verbose,
             "Training codec with {} vectors using {} subspaces and codebook_size {}.",
             len(train_vectors),
-            ann_config.num_subspaces,
-            ann_config.codebook_size,
+            self._ann_config.num_subspaces,
+            self._ann_config.codebook_size,
         )
 
         codec_params = {
-            "M": ann_config.num_subspaces,
-            "Ks": ann_config.codebook_size,
+            "M": self._ann_config.num_subspaces,
+            "Ks": self._ann_config.codebook_size,
             "metric": self.metric,
             "verbose": False,
         }
 
-        if ann_config.quantizer == "opq":
+        if self._ann_config.quantizer == "opq":
             codec = nanopq.OPQ(**codec_params)
 
             # Use parametric_init=True for rotation optimization. Since our vectors
@@ -173,7 +160,6 @@ class ApproximateSearch(BaseStrategy):
         self.index = rii.Rii(fine_quantizer=codec)
         self.index.add_configure(vecs=indexed_vecs)
 
-        self._is_fitted = True
         log_info(self.verbose, "ANN index fit completed successfully.")
 
     def _validate_fitted(self) -> None:
@@ -181,17 +167,15 @@ class ApproximateSearch(BaseStrategy):
         Validates the index state.
 
         Raises:
-            IndexNotFittedError: If the quantization parameters (codebooks,
-                rotation matrix) have not been learned via fit().
+            IndexNotFittedError: If the index has not been fitted yet.
         """
-        if not self._is_fitted:
+        if self.index is None:
             raise IndexNotFittedError(
                 "The index parameters are not yet learned. Please run .fit() "
                 "on your training vectors before performing any index operations."
             )
 
-    def _do_reconfigure(self) -> dict:
-        """Reconfigure index in background thread without blocking queries."""
+    def _do_reconfigure(self) -> None:
         log_info(self.verbose, "ANN index reconfiguration in progress (this may take a moment)...")
         self.index.reconfigure()
         self._delta_since_reconfig = 0
@@ -209,7 +193,7 @@ class ApproximateSearch(BaseStrategy):
             self.active_ids = np.empty((0,), dtype="S16")
             return
 
-        self.active_ids = np.array(self.ids, dtype="S16")[active_indices]
+        self.active_ids = np.array(self.all_ids, dtype="S16")[active_indices]
 
     def add(self, vector_records, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
@@ -230,8 +214,8 @@ class ApproximateSearch(BaseStrategy):
             embeddings = []
 
             for record in vector_records.records:
-                idx = len(self.ids)
-                self.ids.append(record.id)
+                idx = len(self.all_ids)
+                self.all_ids.append(record.id)
                 self.id_to_idx[record.id] = idx
                 self.mask = np.append(self.mask, True)
                 self.active_ids = None
@@ -248,12 +232,12 @@ class ApproximateSearch(BaseStrategy):
 
         return assigned_ids
 
-    def delete(self, ids: list[bytes]) -> None:
+    def soft_delete(self, ids: list[bytes]) -> None:
         """
-        Delete vectors from the index by their IDs.
+        Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids (list[bytes]): List of UUIDv7 IDs to delete.
+            ids (list[bytes]): List of UUIDv7 IDs to soft-delete.
 
         Raises:
             IndexNotFittedError: If called on an index that has not been fitted yet.
@@ -262,11 +246,11 @@ class ApproximateSearch(BaseStrategy):
 
         with self._rwlock.gen_wlock():
             for id_bytes in ids:
-                idx = self.id_to_idx.get(id_bytes)
+                idx = self.id_to_idx.pop(id_bytes, None)
                 if idx is not None:
                     self.mask[idx] = False
 
-            self.db.delete(ids, soft=True)
+            self.db.soft_delete(ids)
 
             # Invalidate cache
             self.active_ids = None
@@ -327,6 +311,39 @@ class ApproximateSearch(BaseStrategy):
 
         return self._build_results(ids, scores, id_to_row, include_vectors)
 
+    def compact(self) -> None:
+        """Hard-delete soft-deleted records and rebuild the index."""
+        with self._rwlock.gen_wlock():
+            active_indices = self.mask.nonzero()[0]
+            if len(active_indices) <= self._ann_config.codebook_size:
+                logger.warning(
+                    "Skipping ANN index rebuild: only {} active vectors, "
+                    "codebook_size {} requires strictly fewer.",
+                    len(active_indices),
+                    self._ann_config.codebook_size,
+                )
+                return
+
+            self.db.compact()
+
+            self.active_ids = np.array(self.all_ids, dtype="S16")[active_indices]
+            self.all_ids = self.active_ids.tolist()
+            self.mask = np.ones(len(self.all_ids), dtype=bool)
+
+            gen = self.db.iter_embeddings()
+            first_batch = next(gen, None)
+            if first_batch:
+                embeddings = np.vstack(
+                    [np.frombuffer(vecs, dtype=np.float32) for vecs in first_batch]
+                )
+                self.fit(embeddings, self.active_ids)
+
+            for batch in gen:
+                embeddings = np.vstack(
+                    [np.frombuffer(vecs, dtype=np.float32) for vecs in batch]
+                )
+                self.index.add(embeddings)
+
     def _query_index(
         self,
         query_vec: np.ndarray,
@@ -367,6 +384,6 @@ class ApproximateSearch(BaseStrategy):
             topk=top_k,  # rii index uses topk instead of top_k
             target_ids=np.array(target_indices),
         )
-        top_ids = [self.ids[i] for i in indices]
+        top_ids = [self.all_ids[i] for i in indices]
 
         return top_ids, top_scores

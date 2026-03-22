@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import pysqlite3 as sqlite3
 import pytest
@@ -72,8 +73,8 @@ def test_add(exact_search_strategy, sample_embeddings):
     ]
     ids = exact_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
 
-    n_ids = len(exact_search_strategy.ids)
-    n_vecs = len(exact_search_strategy.vectors)
+    n_ids = len(exact_search_strategy.all_ids)
+    n_vecs = len(exact_search_strategy.all_vectors)
     n_map = len(exact_search_strategy.id_to_idx)
     expected = 4
 
@@ -88,9 +89,10 @@ def test_add(exact_search_strategy, sample_embeddings):
     assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
 
 
-def test_delete(exact_search_strategy):
-    """Test deleting vector records by checking if they aren't active anymore"""
-    exact_search_strategy.delete(IDS_TO_DELETE)
+def test_soft_delete(exact_search_strategy):
+    """Test soft-deleting vector records by checking if they aren't active anymore"""
+    exact_search_strategy.soft_delete(IDS_TO_DELETE)
+    time.sleep(0.2)
     exact_search_strategy._ensure_cache()
 
     n_ids = len(exact_search_strategy.active_ids)
@@ -103,9 +105,7 @@ def test_delete(exact_search_strategy):
         f"IDs={n_ids}, Vectors={n_vecs}, Mask={n_mask}"
     )
 
-    cursor = exact_search_strategy.db.conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = 0")
-    db_count = cursor.fetchone()[0]
+    db_count = exact_search_strategy.db.count()
     assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
 
 
@@ -138,3 +138,19 @@ def test_search(exact_search_strategy, sample_records):
             assert np.allclose(res_item["embedding"], record["embedding"]), (
                 f"Embedding mismatch for {rec_id_str}"
             )
+
+
+def test_compact(exact_search_strategy):
+    """Test that compact hard-deletes soft-deleted records and rebuilds in-memory structures."""
+    ids_before = len(exact_search_strategy.all_ids)
+
+    exact_search_strategy.compact()
+    time.sleep(0.2)
+
+    assert len(exact_search_strategy.all_ids) == ids_before - len(IDS_TO_DELETE), "all_ids should be slimmed by deleted count"
+    assert len(exact_search_strategy.mask) == len(exact_search_strategy.all_ids), "mask length should match all_ids"
+    assert all(exact_search_strategy.mask), "All entries in mask should be True"
+
+    cursor = exact_search_strategy.db.conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = TRUE")
+    assert cursor.fetchone()[0] == 0, "All soft-deleted records should be hard-deleted from SQLite"

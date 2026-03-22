@@ -26,6 +26,7 @@ class BaseStrategy(ABC):
         in_memory: bool,
         metric: Literal["euclidean", "cosine"],
         verbose: bool,
+        **kwargs,
     ) -> None:
         """
         Initialize the strategy.
@@ -38,6 +39,7 @@ class BaseStrategy(ABC):
             in_memory (bool): Whether using in-memory storage.
             metric (Literal["euclidean", "cosine"]): Distance metric to use.
             verbose (bool): Enable verbose output.
+            **kwargs: Additional keyword arguments for subclasses.
         """
         self.db = db
         # Reserved for future index persistence (save/load to disk)
@@ -66,12 +68,17 @@ class BaseStrategy(ABC):
         pass
 
     @abstractmethod
-    def delete(self, ids: list[str]) -> None:
-        """Delete vectors from the index by their IDs.
+    def soft_delete(self, ids: list[str]) -> None:
+        """Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids (list[bytes]): List of UUIDv7 IDs to delete.
+            ids (list[bytes]): List of UUIDv7 IDs to soft-delete.
         """
+        pass
+
+    @abstractmethod
+    def compact(self) -> None:
+        """Hard-delete soft-deleted records and rebuild the index."""
         pass
 
     @abstractmethod
