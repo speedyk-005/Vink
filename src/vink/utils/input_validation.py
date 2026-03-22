@@ -76,33 +76,35 @@ def validate_arguments(fn):
     return wrapper
 
 
-def validate_embedding(vecs: list[float] | np.ndarray) -> np.ndarray:
+def validate_embedding(vecs: list[float] | np.ndarray, metric: str = "euclidean") -> np.ndarray:
     """
-    Validate, cast, and L2-normalize input vectors.
+    Validate and optionally normalize input vectors.
 
-    Ensures the input is a valid numeric array, enforces a 2D (1, d) shape
-    consistency, and projects the vector onto a unit sphere for optimized
-    distance calculations.
+    Ensures the input is a valid numeric array and enforces a 2D (1, d) shape.
+    Normalization is only applied for cosine metric; euclidian skips normalization.
 
     Args:
         vecs (list[float] | np.ndarray): Input embedding. Accepts 1D arrays of
             shape (d,) or 2D row vectors of shape (1, d).
+        metric (str): Distance metric. Defaults to "euclidean".
 
     Returns:
-        np.ndarray: A float32 row vector of shape (1, d) where ||v||₂ = 1.0.
+        np.ndarray: A float32 row vector of shape (1, d). Normalized for cosine,
+            raw for euclidean.
 
     Raises:
-        InvalidInputError: If the input contains non-numeric values or has a
-            zero-magnitude (null) norm, preventing normalization.
+        InvalidInputError: If the input contains non-numeric values or (for cosine)
+            has a zero-magnitude (null) norm.
         VectorDimensionError: If the input dimensionality or shape is incompatible
             with a single-vector representation.
     """
+    # Cast to float32 immediately to catch non-numeric types
     try:
-        # Cast to float32 immediately to catch non-numeric types
         vecs = np.asarray(vecs, dtype=np.float32)
     except (ValueError, TypeError):
         raise InvalidInputError("Vector components must be numeric (int or float).")
 
+    # Validate shape: must be 1D (d,) or 2D with single row (1, d)
     if not (vecs.ndim == 1 or (vecs.ndim == 2 and vecs.shape[0] == 1)):
         raise VectorDimensionError(
             f"Embedding must be (d,) or (1, d). Got shape {vecs.shape}."
@@ -112,17 +114,17 @@ def validate_embedding(vecs: list[float] | np.ndarray) -> np.ndarray:
     if vecs.ndim == 1:
         vecs = vecs.reshape(1, -1)
 
-    # Compute L2 norm (magnitude)
-    norm = np.linalg.norm(vecs, axis=1, keepdims=True)
+    if metric == "cosine":
+        norm = np.linalg.norm(vecs, axis=1, keepdims=True)
+        # Prevent division by zero / NaN poisoning
+        if np.any(norm < 1e-9):
+            raise InvalidInputError(
+                "Cannot normalize a zero-magnitude vector. "
+                "Ensure the embedding contains non-zero variance."
+            )
+        return vecs / norm
 
-    # Prevent division by zero / NaN poisoning
-    if np.any(norm < 1e-9):
-        raise InvalidInputError(
-            "Cannot normalize a zero-magnitude vector. "
-            "Ensure the embedding contains non-zero variance."
-        )
-
-    return vecs / norm
+    return vecs
 
 
 def validate_id(id: str | bytes) -> bytes:

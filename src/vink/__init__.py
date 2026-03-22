@@ -13,7 +13,7 @@ Key differentiators:
 Features:
     - ~100x faster using RII and Product Quantization for large datasets.
     - Pure Python: No external services or dependencies required.
-    - Supports Euclidean (L2) and dot product similarity.
+    - Supports Euclidean (L2) and cosine (dot) product similarity.
     - SQLite-backed persistent storage.
 
 Technical Background:

@@ -70,7 +70,7 @@ def test_add(exact_search_strategy, sample_embeddings):
             "embedding": sample_embeddings,
         },
     ]
-    ids = exact_search_strategy.add(VectorRecords(dim=128, records=records))
+    ids = exact_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
 
     n_ids = len(exact_search_strategy.ids)
     n_vecs = len(exact_search_strategy.vectors)
@@ -112,7 +112,7 @@ def test_delete(exact_search_strategy):
 @pytest.mark.parametrize("sample_records", [{"num": 4}], indirect=True)
 def test_search(exact_search_strategy, sample_records):
     """Test that search retrieves, ranks, and returns correct vector fields."""
-    exact_search_strategy.add(VectorRecords(dim=128, records=sample_records))
+    exact_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=sample_records))
 
     # Use the first embedding from sample_records as query
     query_embedding = sample_records[0]["embedding"]

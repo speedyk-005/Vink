@@ -1,4 +1,4 @@
-from typing import Annotated, Callable, Literal
+from typing import Annotated, Any, Callable, Literal
 
 import numpy as np
 from pydantic import BaseModel, FailFast, Field, field_validator, model_validator
@@ -76,8 +76,8 @@ class VectorRecord(BaseModel):
     metadata: dict = Field(
         default_factory=dict, description="Additional metadata as key-value pairs."
     )
-    embedding: Annotated[list[float], FailFast] | np.ndarray | None = Field(
-        None, description="Vector embedding. Auto-converted and L2-normalized."
+    embedding: Any = Field(
+        default=None, description="Vector embedding. Validated and normalized by VectorRecords."
     )
 
     @field_validator("id", mode="before")
@@ -86,22 +86,12 @@ class VectorRecord(BaseModel):
         """Validate an ID or generate a new UUIDv7. Always returns 16 bytes."""
         return validate_id(v)
 
-    @field_validator("embedding", mode="before")
-    @classmethod
-    def validate_embedding(cls, v):
-        """Validate, cast, and L2-normalize input vectors."""
-        if v is None:
-            return v
-        return validate_embedding(v)
-
-
 class VectorRecords(BaseModel):
     """Container for multiple vector records with dimension enforcement."""
 
     dim: int = Field(gt=0, description="The required dimension for all embeddings.")
-    records: list[VectorRecord] = Field(
-        description="List of vector records to be indexed.", fail_fast=True
-    )
+    metric: Literal["cosine", "euclidean"] = Field(description="Distance metric for vector normalization.")
+    records: list[VectorRecord] = Field(fail_fast=True)
     embedding_callback: Callable[[str], np.ndarray] | None = Field(
         default=None,
         description="Optional function to generate vectors for records missing 'embedding' values.",
@@ -109,20 +99,21 @@ class VectorRecords(BaseModel):
 
     @model_validator(mode="after")
     def validate_dimensions(self) -> "VectorRecords":
-        """Ensure all embeddings match the specified dimension."""
+        """Ensure all embeddings match the specified dimension and normalize if needed."""
         for i, record in enumerate(self.records):
             if record.embedding is None and self.embedding_callback is not None:
                 record.embedding = self.embedding_callback(record.content)
 
             if record.embedding is not None:
-                actual_dim = record.embedding.shape[-1]
+                validated = validate_embedding(record.embedding, metric=self.metric)
+                actual_dim = validated.shape[-1]
                 if actual_dim != self.dim:
                     raise VectorDimensionError(
                         f"Dimension mismatch at record[{i}]. "
                         f"Expected {self.dim}, got {actual_dim}."
                     )
+                record.embedding = validated
             else:
-                # If still None and no callback, it's an error
                 raise InvalidInputError(
                     f"Record[{i}] is missing an embedding and no default callback is set."
                 )

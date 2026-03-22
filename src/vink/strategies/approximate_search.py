@@ -29,13 +29,15 @@ class ApproximateSearch(BaseStrategy):
         and the quantization method employed.
     """
 
+    NANOPQ_METRIC_MAP = {"euclidean": "l2", "cosine": "dot"}
+
     def __init__(
         self,
         db: SQLiteWrapper,
         dir_path: Path | None,
         dim: int,
         in_memory: bool,
-        metric: Literal["l2", "dot"] = "l2",
+        metric: Literal["euclidean", "cosine"],
         verbose: bool = False,
     ) -> None:
         """
@@ -46,9 +48,8 @@ class ApproximateSearch(BaseStrategy):
             dir_path (Path | None): Path to store vector data. Defaults to None.
             dim (int): Dimension of the vectors.
             in_memory (bool): Whether using in-memory storage.
-            metric (Literal["l2", "dot"], optional): Distance metric to use.
-                Defaults to "l2".
-            verbose (bool, optional): Enable verbose output. Defaults to False.
+            metric (Literal["euclidean", "dot"]): Distance metric to use.
+            verbose (bool): Enable verbose output.
         """
         super().__init__(
             db=db,
@@ -59,6 +60,7 @@ class ApproximateSearch(BaseStrategy):
             metric=metric,
             verbose=verbose,
         )
+        self.metric = self.NANOPQ_METRIC_MAP[metric]
 
         self._rwlock = rwlock.RWLockFair()
 

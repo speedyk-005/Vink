@@ -23,7 +23,7 @@ class ExactSearch(BaseStrategy):
         dir_path: Path | None,
         dim: int,
         in_memory: bool,
-        metric: Literal["l2", "dot"] = "l2",
+        metric: Literal["euclidean", "cosine"],
         verbose: bool = False,
     ) -> None:
         """
@@ -34,8 +34,8 @@ class ExactSearch(BaseStrategy):
             dir_path (Path | None): Path to store vector data. Defaults to None.
             dim (int): Dimension of the vectors.
             in_memory (bool): Whether using in-memory storage.
-            metric (Literal["l2", "dot"], optional): Distance metric to use. Defaults to "l2".
-            verbose (bool, optional): Enable verbose output. Defaults to False.
+            metric (Literal["euclidean", "cosine"]): Distance metric to use.
+            verbose (bool): Enable verbose output.
         """
         super().__init__(
             db=db,
@@ -172,12 +172,12 @@ class ExactSearch(BaseStrategy):
             filtered_ids = self.active_ids
         """
 
-        if self.metric == "dot":
+        if self.metric == "cosine":
             ids, scores = self._cosine_similarity(
                 query_vec, filtered_vectors, filtered_ids, top_k
             )
-        else:  # "l2/euclidian"
-            ids, scores = self._euclidian_distance(
+        else:
+            ids, scores = self._euclidean_distance(
                 query_vec, filtered_vectors, filtered_ids, top_k
             )
 
@@ -224,7 +224,7 @@ class ExactSearch(BaseStrategy):
 
         return top_ids, top_scores
 
-    def _euclidian_distance(
+    def _euclidean_distance(
         self,
         query_vec: np.ndarray,
         vectors: np.ndarray,

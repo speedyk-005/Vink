@@ -39,7 +39,7 @@ def approx_search_strategy(in_memory_db):
         dir_path=None,
         dim=128,
         in_memory=True,
-        metric="l2",
+        metric="euclidean",
         verbose=False,
     )
 
@@ -60,7 +60,7 @@ def approx_search_strategy(in_memory_db):
         {"id": id, "content": "fit content", "metadata": {}, "embedding": vec}
         for id, vec in zip(ids, train_vectors)
     ]
-    strategy.db.insert(VectorRecords(dim=128, records=records))
+    strategy.db.insert(VectorRecords(dim=128, metric="euclidean", records=records))
 
     global IDS_TO_DELETE
     IDS_TO_DELETE = ids  # Store them for the deletion test case
@@ -84,7 +84,7 @@ def test_add(approx_search_strategy, sample_embeddings):
             "embedding": sample_embeddings,
         },
     ]
-    ids = approx_search_strategy.add(VectorRecords(dim=128, records=records))
+    ids = approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
 
     n_ids = len(approx_search_strategy.ids)
     n_map = len(approx_search_strategy.id_to_idx)
@@ -125,7 +125,7 @@ def test_delete(approx_search_strategy):
 @pytest.mark.parametrize("sample_records", [{"num": 4}], indirect=True)
 def test_search(approx_search_strategy, sample_records):
     """Test that search retrieves, ranks, and returns correct vector fields."""
-    approx_search_strategy.add(VectorRecords(dim=128, records=sample_records))
+    approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=sample_records))
 
     # Use the first embedding from sample_records as query
     query_embedding = sample_records[0]["embedding"]

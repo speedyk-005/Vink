@@ -99,12 +99,16 @@ def test_embedding_validation(embedding, exc_type):
     """Test that embedding validation correctly flags errors or allows valid inputs."""
     if exc_type:
         with pytest.raises(exc_type):
-            VectorRecord(content="test", embedding=embedding)
+            VectorRecords(
+                dim=128, metric="cosine", records=[{"content": "test", "embedding": embedding}]
+            )
     else:
         # Should not raise any exception
-        record = VectorRecord(content="test", embedding=embedding)
-        assert record.embedding.shape == (1, 128)
-        assert np.isclose(np.linalg.norm(record.embedding), 1.0)
+        records = VectorRecords(
+            dim=128, metric="cosine", records=[{"content": "test", "embedding": embedding}]
+        )
+        assert records.records[0].embedding.shape == (1, 128)
+        assert np.isclose(np.linalg.norm(records.records[0].embedding), 1.0)
 
 
 def test_dimension_mismatch():
@@ -113,5 +117,5 @@ def test_dimension_mismatch():
     embedding = np.random.rand(10)
     with pytest.raises(VectorDimensionError):
         VectorRecords(
-            dim=expected_dim, records=[{"content": "test", "embedding": embedding}]
+            dim=expected_dim, metric="cosine", records=[{"content": "test", "embedding": embedding}]
         )

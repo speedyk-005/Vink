@@ -24,8 +24,8 @@ class BaseStrategy(ABC):
         dim: int,
         is_exact: bool,
         in_memory: bool,
-        metric: Literal["l2", "dot"] = "l2",
-        verbose: bool = False,
+        metric: Literal["euclidean", "cosine"],
+        verbose: bool,
     ) -> None:
         """
         Initialize the strategy.
@@ -36,8 +36,8 @@ class BaseStrategy(ABC):
             dim (int): Dimension of the vectors.
             is_exact (bool): Whether this strategy uses exact search.
             in_memory (bool): Whether using in-memory storage.
-            metric (Literal["l2", "dot"], optional): Distance metric to use. Defaults to "l2".
-            verbose (bool, optional): Enable verbose output. Defaults to False.
+            metric (Literal["euclidean", "cosine"]): Distance metric to use.
+            verbose (bool): Enable verbose output.
         """
         self.db = db
         # Reserved for future index persistence (save/load to disk)

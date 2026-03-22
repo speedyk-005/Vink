@@ -37,8 +37,8 @@ class VinkDB:
     Features:
         - Hybrid search: exact for small datasets, ANN for large datasets.
         - Automatic strategy switching based on normalized power-law complexity.
-        - L2-normalized embeddings for consistent distance metrics.
-        - Supports Euclidean (L2) and dot product similarity.
+        - Normalized embeddings for consistent distance metrics.
+        - Supports Euclidean (L2) and cosine (dot) product similarity.
         - Soft deletes: efficient deletion without data reorganization.
 
     Getting ANNConfig:
@@ -61,7 +61,7 @@ class VinkDB:
         self,
         dir_path: str | Path,
         dim: int,
-        metric: Literal["euclidian", "dot"] = "euclidian",
+        metric: Literal["euclidean", "cosine"] = "euclidean",
         force_exact: bool = False,
         ann_config: AnnConfig | None = None,
         embedding_callback: Callable | None = None,
@@ -83,8 +83,8 @@ class VinkDB:
                 and SQLite database for vector records.
                 Use ":memory:" for volatile in-memory storage.
             dim (int): Dimension of the vectors.
-            metric (Literal["euclidian", "dot"], optional): Distance metric to use.
-                Defaults to "euclidian".
+            metric (Literal["euclidean", "cosine"], optional): Distance metric to use.
+                Defaults to "euclidean".
             force_exact (bool, optional): If True, only exact calculation is used.
                 If False, switches between exact and ANN based on switch_exp.
                 Defaults to False.
@@ -102,9 +102,7 @@ class VinkDB:
 
         self._dir_path = Path(dir_path)
         self._dim = dim
-
-        # Use "l2" internally for compatibility with rii/nanopq
-        self._metric = "l2" if metric == "euclidian" else metric
+        self._metric = metric
 
         self._force_exact = force_exact
         self._ann_config = ann_config
@@ -137,7 +135,7 @@ class VinkDB:
             dir_path=self._dir_path if not self._in_memory else None,
             dim=self._dim,
             in_memory=self._in_memory,
-            metric=self._metric,
+            metric=self.metric,
             verbose=self.verbose,
         )
 
@@ -148,27 +146,22 @@ class VinkDB:
 
     @property
     def dir_path(self) -> Path:
-        """The absolute path to the directory where database files are persisted."""
         return self._dir_path
 
     @property
     def dim(self) -> int:
-        """The dimension of the vectors (embedding length)."""
         return self._dim
 
     @property
     def metric(self) -> str:
-        """The distance metric used for similarity search."""
-        return "euclidean" if self._metric == "l2" else self._metric
+        return self._metric
 
     @property
     def force_exact(self) -> bool:
-        """Whether the database uses exact brute-force calculations only."""
         return self._force_exact
 
     @property
     def in_memory(self) -> bool:
-        """Whether storage is volatile (':memory:') or persisted on disk."""
         return self._in_memory
 
     @property
@@ -197,7 +190,7 @@ class VinkDB:
                 raw_vec = self.embedding_callback("vink_warmup_test")
 
                 # This handles casting, shape normalization (1, d), and L2 projection
-                validated_vec = validate_embedding(raw_vec)
+                validated_vec = validate_embedding(raw_vec, metric=self._metric)
 
                 if validated_vec.shape[-1] != self._dim:
                     raise VectorDimensionError(
@@ -238,6 +231,7 @@ class VinkDB:
         try:
             records = VectorRecords(
                 dim=self.dim,
+                metric=self._metric,
                 records=vector_records,
                 embedding_callback=self.embedding_callback,
             )
@@ -262,7 +256,7 @@ class VinkDB:
 
         assigned_ids = self._strategy.add(records)
 
-        # After adding, check if switch should be triggered based on new count
+        # Check if switch should be triggered based on new count
         if self.strategy == "exact_search" and self._should_switch():
             if not self._ann_building:
                 self._ann_building = True
@@ -322,7 +316,7 @@ class VinkDB:
             self.strategy,
         )
 
-        query = validate_embedding(query_vec)
+        query = validate_embedding(query_vec, metric=self._metric)
         results = self._strategy.search(
             query_vec, top_k=top_k, include_vectors=include_vectors
         )
@@ -380,7 +374,7 @@ class VinkDB:
             dir_path=self._dir_path if not self._in_memory else None,
             dim=self._dim,
             in_memory=self._in_memory,
-            metric=self._metric,
+            metric=self.metric,
             verbose=self.verbose,
         )
         approx_strategy.fit(vectors, ids, self._ann_config)
@@ -427,7 +421,7 @@ class VinkDB:
         can proceed immediately after the strategy swap, without waiting
         for the buffer dump to complete.
         """
-        strategy.add(VectorRecords(dim=self._dim, records=records), is_buffer=True)
+        strategy.add(VectorRecords(dim=self._dim, metric=self._metric, records=records), is_buffer=True)
         self._records_db.clear_buffer()
         log_info(
             self.verbose,
