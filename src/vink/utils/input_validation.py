@@ -2,6 +2,7 @@ from functools import wraps
 from uuid import UUID
 
 import numpy as np
+import reprlib
 from pydantic import ConfigDict, ValidationError, validate_call
 
 from vink.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError
@@ -32,16 +33,16 @@ def pretty_errors(error: ValidationError) -> str:
         input_value = err["input"]
         input_type = type(input_value).__name__
 
-        # Slice to prevent large embeddings from flooding the terminal
-        input_value = (
-            input_value
-            if len(str(input_value)) < 500
-            else str(input_value)[:500] + "..."
-        )
+        # reprlib.repr adds quotes and ellipsis around string truncation, which
+        # looks odd for long strings. Plain slice is cleaner and faster for str.
+        if isinstance(input_value, str):
+            input_repr = input_value[:200] + "..." if len(input_value) > 200 else input_value
+        else:
+            input_repr = reprlib.repr(input_value)
 
         lines.append(
             f"{ind}) {formatted_loc} {msg}.\n"
-            f"  Found: (input={input_value!r}, type={input_type})"
+            f"  Found: (input={input_repr}, type={input_type})"
         )
 
     # Append hint if available
