@@ -1,5 +1,5 @@
 from pathlib import Path
-from threading import Lock
+from readerwriterlock import rwlock
 from typing import Literal
 
 import numpy as np
@@ -47,8 +47,7 @@ class ExactSearch(BaseStrategy):
             verbose=verbose,
         )
 
-        # Lock for thread-safe add/delete operations
-        self._lock = Lock()
+        self._rwlock = rwlock.RWLockFair()
 
         self.vectors: list[np.ndarray] = []
         self.ids: list[bytes] = []
@@ -66,30 +65,30 @@ class ExactSearch(BaseStrategy):
         if not (self.active_vectors is None or self.active_ids is None):
             return
 
-        with self._lock:
-            # Get indices of non-deleted items (True in self.mask)
-            active_indices = self.mask.nonzero()[0]
+        # Caller holds the lock; no nested lock acquisition.
+        active_indices = self.mask.nonzero()[0]
 
-            if len(active_indices) == 0:
-                self.active_vectors = np.empty((0, self.dim), dtype=np.float32)
-                self.active_ids = np.empty((0,), dtype="S16")
-                return
+        if len(active_indices) == 0:
+            self.active_vectors = np.empty((0, self.dim), dtype=np.float32)
+            self.active_ids = np.empty((0,), dtype="S16")
+            return
 
-            self.active_vectors = np.vstack(self.vectors).astype(
-                np.float32, copy=False
-            )[active_indices]
-            self.active_ids = np.array(self.ids, dtype="S16")[active_indices]
+        self.active_vectors = np.vstack(self.vectors).astype(
+            np.float32, copy=False
+        )[active_indices]
+        self.active_ids = np.array(self.ids, dtype="S16")[active_indices]
 
-    def add(self, vector_records) -> list[str]:
+    def add(self, vector_records, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
             vector_records (VectorRecords): Container with list of vector records.
+            is_buffer (bool): If True, records are already in SQLite. Defaults to False.
 
         Returns:
             list[str]: List of assigned UUIDv7 IDs.
         """
-        with self._lock:
+        with self._rwlock.gen_wlock():
             assigned_ids = []
 
             for record in vector_records.records:
@@ -105,7 +104,8 @@ class ExactSearch(BaseStrategy):
 
                 assigned_ids.append(self._bytes_to_uuid_str(record.id))
 
-            self.db.insert(vector_records)
+            if not is_buffer:
+                self.db.insert(vector_records)
 
         return assigned_ids
 
@@ -116,7 +116,7 @@ class ExactSearch(BaseStrategy):
         Args:
             ids (list[bytes]): List of UUIDv7 IDs to delete.
         """
-        with self._lock:
+        with self._rwlock.gen_wlock():
             for id_bytes in ids:
                 idx = self.id_to_idx.get(id_bytes)
                 if idx is not None:
@@ -146,9 +146,10 @@ class ExactSearch(BaseStrategy):
             list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
-        self._ensure_cache()
+        with self._rwlock.gen_rlock():
+            self._ensure_cache()
 
-        filtered_vectors = self.active_vectors
+            filtered_vectors = self.active_vectors
         filtered_ids = self.active_ids
 
         # TODO: support metadata filtering

@@ -1,9 +1,9 @@
 import json
 import math
 import shutil
-import time
 from pathlib import Path
-from threading import Lock, Thread
+from readerwriterlock import rwlock
+from threading import Thread
 from typing import Callable, Literal
 
 import numpy as np
@@ -14,6 +14,7 @@ from vink.exceptions import InvalidInputError, VectorDimensionError
 from vink.models import AnnConfig, VectorRecords
 
 # The strategies are lazy imported
+
 from vink.sql_wrapper import SQLiteWrapper
 from vink.tasker import Tasker
 from vink.utils.input_validation import (
@@ -35,7 +36,7 @@ class VinkDB:
 
     Features:
         - Hybrid search: exact for small datasets, ANN for large datasets.
-        - Automatic strategy switching based on configurable ratio.
+        - Automatic strategy switching based on normalized power-law complexity.
         - L2-normalized embeddings for consistent distance metrics.
         - Supports Euclidean (L2) and dot product similarity.
         - Soft deletes: efficient deletion without data reorganization.
@@ -47,7 +48,7 @@ class VinkDB:
         >>> config = AnnConfig(
         ...     num_subspaces=16,
         ...     codebook_size=128,
-        ...     switch_ratio=4.0,
+        ...     switch_exp=1.0,
         ...     quantizer="pq"
         ... )
         >>> db = VinkDB(dir_path="./data", dim=384, ann_config=config)
@@ -85,7 +86,7 @@ class VinkDB:
             metric (Literal["euclidian", "dot"], optional): Distance metric to use.
                 Defaults to "euclidian".
             force_exact (bool, optional): If True, only exact calculation is used.
-                If False, switches between exact and ANN based on switch_ratio.
+                If False, switches between exact and ANN based on switch_exp.
                 Defaults to False.
             ann_config (AnnConfig, optional): Configuration for approximate nearest neighbor search.
                 Only applicable when force_exact is False.
@@ -142,8 +143,8 @@ class VinkDB:
 
         # Threading components for ANN auto-switch
         self._ann_building = False
-        self._lock = Lock()
-        self._tasker = Tasker(task=lambda: self._build_approx(), once=True)
+        self._rwlock = rwlock.RWLockFair()
+        self._tasker = Tasker(task=lambda: self._prepare_approx_strategy(), once=True)
 
     @property
     def dir_path(self) -> Path:
@@ -234,13 +235,6 @@ class VinkDB:
         Raises:
             InvalidInputError: If validation fails or if the first batch exceeds 10,000 vectors.
         """
-        # Prevent large first batch to avoid expensive initial ANN builds
-        if self.count() == 0 and len(vector_records) > 10000:
-            raise InvalidInputError(
-                f"First batch cannot exceed 10,000 vectors (got {len(vector_records)}). "
-                f"This limit applies only to the initial add() call when the database is empty."
-            )
-
         try:
             records = VectorRecords(
                 dim=self.dim,
@@ -340,7 +334,7 @@ class VinkDB:
         """
         Check if ANN switch should be triggered based on dual conditions:
         1. Sufficiency: num_vectors >= min_required (num_subspaces * codebook_size)
-        2. Complexity: sqrt(dim * num_vectors) / 1000 >= switch_ratio
+        2. Complexity: Normalized power-law (dim * num_vectors / 1M) ^ switch_exp >= 1.0
 
         Returns:
             bool: True if conditions met to switch to ANN, False otherwise.
@@ -358,10 +352,14 @@ class VinkDB:
         if n_vecs < min_required:
             return False
 
-        complexity = math.sqrt(self._dim * n_vecs) / 1000
-        return complexity >= cfg.switch_ratio
+        total_ops = self._dim * n_vecs
+        threshold_ops = 1_000_000
 
-    def _build_approx(self) -> dict:
+        # Normalized Power-Law: (x/ref)^exp
+        complexity = (total_ops / threshold_ops) ** cfg.switch_exp
+        return complexity >= 1.0
+
+    def _prepare_approx_strategy(self) -> dict:
         """
         Tasker task: Build ANN strategy in daemon thread.
 
@@ -392,52 +390,48 @@ class VinkDB:
         # Automatically switch after successful build
         self._switch_to_approx_strategy(approx_strategy)
 
-        return {}
-
     def _switch_to_approx_strategy(self, strategy) -> None:
-        """Apply strategy switch with the given new_strategy."""
-        # Swap strategy
-        with self._lock:
+        with self._rwlock.gen_wlock():
             self._strategy = strategy
 
         self._ann_building = False
 
-        dump_thread = Thread(target=self._dump_buffer_batched, daemon=True)
-        dump_thread.start()
+        buffer_rows = self._records_db.fetch(
+            where="buffer = TRUE AND deleted = FALSE",
+            include_vectors=True,
+            params=[],
+        )
 
-    def _dump_buffer_batched(self) -> None:
-        """Dump buffer to new strategy in background with batching and pauses."""
-        while True:
-            buffer_rows = self._records_db.fetch(
-                where="buffer = TRUE AND deleted = FALSE",
-                include_vectors=True,
-                params=[],
-            )
+        if not buffer_rows:
+             return
 
-            if not buffer_rows:
-                break
+        records = [
+            {
+                "id": row[0],
+                "content": row[1],
+                "metadata": json.loads(row[2]),
+                "embedding": np.frombuffer(row[3], dtype=np.float32),
+            }
+            for row in buffer_rows
+        ]
 
-            records = [
-                {
-                    "id": row["id"],
-                    "content": row["content"],
-                    "metadata": json.loads(row["metadata"]),
-                    "embedding": np.frombuffer(row["embedding"], dtype=np.float32),
-                }
-                for row in buffer_rows
-            ]
+        Thread(
+            target=lambda: self._drain_buffer(strategy, records),
+            daemon=True,
+        ).start()
 
-            with self._lock:
-                self._strategy.add(VectorRecords(dim=self._dim, records=records))
+    def _drain_buffer(self, strategy, records: list[dict]) -> None:
+        """Drain the buffer into the ANN index in a background thread.
 
-            self._records_db.clear_buffer()
-
-            log_info(
-                self.verbose,
-                "Buffer dump: added {} vectors to ANN index.",
-                len(records),
-            )
-
-            time.sleep(0.2)
-
+        This runs as a daemon thread so that add() and search() calls
+        can proceed immediately after the strategy swap, without waiting
+        for the buffer dump to complete.
+        """
+        strategy.add(VectorRecords(dim=self._dim, records=records), is_buffer=True)
+        self._records_db.clear_buffer()
+        log_info(
+            self.verbose,
+            "Buffer dump: added {} vectors to ANN index.",
+            len(records),
+        )
         log_info(self.verbose, "Buffer dump to ANN index completed.")

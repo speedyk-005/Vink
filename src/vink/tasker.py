@@ -90,7 +90,7 @@ class Tasker:
         The worker blocks until `run()` triggers the event
 
         Raises:
-            TypeError: If task result is not a dictionary.
+            TypeError: If task result is not None or a dictionary.
         """
         while True:
             self._build_event.wait()
@@ -99,13 +99,13 @@ class Tasker:
 
             res = self.task()
 
-            if not isinstance(res, dict):
+            if not res is None and not isinstance(res, dict):
                 self.running = False
                 raise TypeError(
                     f"Task must return a dictionary, got {type(res).__name__}"
                 )
 
-            self.lastest_result = res
+            self.lastest_result = res or {}
             self.running = False
 
             self._build_event.clear()
