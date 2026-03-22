@@ -1,19 +1,20 @@
 """
-Vink: A vector database that automatically switches from slow-but-accurate
-search to fast-but-approximate search as your data grows.
+Vink: Vector Incremental Nano Kit
 
-Vink intelligently balances precision and performance by automatically switching
-between exact brute-force search (for small datasets) and approximate nearest
-neighbor (ANN) search (for large datasets) without any manual configuration.
+A lightweight vector database that incrementally switches from exact to
+approximate search as your data grows — without full index rebuilds.
+
+Key differentiators:
+    - **Incremental inserts**: Add vectors anytime — no rebuild per insert.
+    - **Automatic strategy switching**: No manual tuning — exact for small datasets, ANN for large.
+    - **Thread-safe**: Background ANN building doesn't block new operations.
+    - **Soft deletes + compact**: Efficient deletion with explicit storage reclamation.
 
 Features:
-    - **Automatic strategy switching**: No manual tuning needed - Vink knows when to switch.
-    - **Approximate search**: ~100x faster using RII and Product Quantization.
-    - **Thread-safe**: Background ANN building doesn't block new operations.
-    - **Soft deletes**: Efficient deletion with minimal reorganization.
-    - **Pure Python**: No external services or dependencies required.
-    - **Distance metrics**: Supports Euclidean (L2) and dot product similarity.
-    - **Persistent storage**: SQLite-backed durability.
+    - ~100x faster using RII and Product Quantization for large datasets.
+    - Pure Python: No external services or dependencies required.
+    - Supports Euclidean (L2) and dot product similarity.
+    - SQLite-backed persistent storage.
 
 Technical Background:
     Vink uses Reconfigurable Inverted Index (RII) with Product Quantization (PQ)
