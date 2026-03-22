@@ -24,7 +24,7 @@ class ExactSearch(BaseStrategy):
         dim: int,
         in_memory: bool,
         metric: Literal["euclidean", "cosine"],
-        verbose: bool = False,
+        verbose: bool,
     ) -> None:
         """
         Initialize the ExactSearch.
@@ -49,8 +49,8 @@ class ExactSearch(BaseStrategy):
 
         self._rwlock = rwlock.RWLockFair()
 
-        self.vectors: list[np.ndarray] = []
-        self.ids: list[bytes] = []
+        self.all_vectors: list[np.ndarray] = []
+        self.all_ids: list[bytes] = []
         self.id_to_idx: dict[bytes, int] = {}  # Fast O(1) lookup for deletion
 
         # Boolean mask for active/deleted status
@@ -73,10 +73,10 @@ class ExactSearch(BaseStrategy):
             self.active_ids = np.empty((0,), dtype="S16")
             return
 
-        self.active_vectors = np.vstack(self.vectors).astype(
+        self.active_vectors = np.vstack(self.all_vectors).astype(
             np.float32, copy=False
         )[active_indices]
-        self.active_ids = np.array(self.ids, dtype="S16")[active_indices]
+        self.active_ids = np.array(self.all_ids, dtype="S16")[active_indices]
 
     def add(self, vector_records, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
@@ -92,9 +92,9 @@ class ExactSearch(BaseStrategy):
             assigned_ids = []
 
             for record in vector_records.records:
-                idx = len(self.ids)
-                self.vectors.append(record.embedding)
-                self.ids.append(record.id)
+                idx = len(self.all_ids)
+                self.all_vectors.append(record.embedding)
+                self.all_ids.append(record.id)
                 self.id_to_idx[record.id] = idx
                 self.mask = np.append(self.mask, True)
 
@@ -109,24 +109,40 @@ class ExactSearch(BaseStrategy):
 
         return assigned_ids
 
-    def delete(self, ids: list[bytes]) -> None:
+    def soft_delete(self, ids: list[bytes]) -> None:
         """
-        Delete vectors from the index by their IDs.
+        Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids (list[bytes]): List of UUIDv7 IDs to delete.
+            ids (list[bytes]): List of UUIDv7 IDs to soft-delete.
         """
         with self._rwlock.gen_wlock():
             for id_bytes in ids:
-                idx = self.id_to_idx.get(id_bytes)
+                idx = self.id_to_idx.pop(id_bytes, None)
                 if idx is not None:
                     self.mask[idx] = False
 
-            self.db.delete(ids, soft=True)
+            self.db.soft_delete(ids)
 
             # Invalidate cache
             self.active_vectors = None
             self.active_ids = None
+
+    def compact(self) -> None:
+        """Hard-delete soft-deleted records and rebuild the index."""
+        with self._rwlock.gen_wlock():
+            active_indices = self.mask.nonzero()[0]
+
+            self.active_vectors = np.vstack(self.all_vectors).astype(
+                np.float32, copy=False
+            )[active_indices]
+            self.active_ids = np.array(self.all_ids, dtype="S16")[active_indices]
+
+            self.all_vectors = self.active_vectors.tolist()
+            self.all_ids = self.active_ids.tolist()
+            self.mask = np.ones(len(self.all_ids), dtype=bool)
+
+            self.db.compact()
 
     def search(
         self,

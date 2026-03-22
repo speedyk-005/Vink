@@ -1,4 +1,5 @@
 import numpy as np
+import time
 import pysqlite3 as sqlite3
 import pytest
 
@@ -41,6 +42,7 @@ def approx_search_strategy(in_memory_db):
         in_memory=True,
         metric="euclidean",
         verbose=False,
+        ann_config=config,
     )
 
     # N must be greater than codebook_size (8)
@@ -53,7 +55,7 @@ def approx_search_strategy(in_memory_db):
 
     # Generate active IDs for training vectors
     ids = [generate_id_bytes() for _ in range(num_training)]
-    strategy.fit(train_vectors, np.array(ids, dtype="S16"), config)
+    strategy.fit(train_vectors, np.array(ids, dtype="S16"))
 
     # Use wrapper insert to simulate exact search data before the switch
     records = [
@@ -86,7 +88,7 @@ def test_add(approx_search_strategy, sample_embeddings):
     ]
     ids = approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
 
-    n_ids = len(approx_search_strategy.ids)
+    n_ids = len(approx_search_strategy.all_ids)
     n_map = len(approx_search_strategy.id_to_idx)
 
     # Including the ones added in the fitting process in the strategy fixture
@@ -97,14 +99,14 @@ def test_add(approx_search_strategy, sample_embeddings):
     )
 
     cursor = approx_search_strategy.db.conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = 0")
-    db_count = cursor.fetchone()[0]
+    db_count = approx_search_strategy.db.count()
     assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
 
 
-def test_delete(approx_search_strategy):
-    """Test deleting vector records by checking if they aren't active anymore"""
-    approx_search_strategy.delete(IDS_TO_DELETE)
+def test_soft_delete(approx_search_strategy):
+    """Test soft-deleting vector records by checking if they aren't active anymore"""
+    approx_search_strategy.soft_delete(IDS_TO_DELETE)
+    time.sleep(0.2)
     approx_search_strategy._ensure_cache()
 
     n_ids = len(approx_search_strategy.active_ids)
@@ -117,8 +119,7 @@ def test_delete(approx_search_strategy):
     )
 
     cursor = approx_search_strategy.db.conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = 0")
-    db_count = cursor.fetchone()[0]
+    db_count = approx_search_strategy.db.count()
     assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
 
 
@@ -151,3 +152,25 @@ def test_search(approx_search_strategy, sample_records):
             assert np.allclose(res_item["embedding"], record["embedding"]), (
                 f"Embedding mismatch for {rec_id_str}"
             )
+
+
+def test_compact(approx_search_strategy):
+    """Test that compact hard-deletes soft-deleted records and rebuilds the ANN index."""
+    # Add extra records so compact has enough vectors to rebuild the ANN index
+    rng = np.random.default_rng(seed=42)
+    extra_records = [
+        {"id": generate_id_bytes(), "content": f"extra {i}", "embedding": rng.standard_normal(128).astype(np.float32), "metadata": {}}
+        for i in range(5)
+    ]
+    approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=extra_records))
+
+    index_before = approx_search_strategy.index
+    approx_search_strategy.compact()
+    time.sleep(0.2)
+
+    assert approx_search_strategy.index is not None, "Index should be rebuilt"
+    assert approx_search_strategy.index is not index_before, "Index should be a new instance"
+
+    cursor = approx_search_strategy.db.conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = TRUE")
+    assert cursor.fetchone()[0] == 0, "All soft-deleted records should be hard-deleted from SQLite"

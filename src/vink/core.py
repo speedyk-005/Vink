@@ -16,7 +16,6 @@ from vink.models import AnnConfig, VectorRecords
 # The strategies are lazy imported
 
 from vink.sql_wrapper import SQLiteWrapper
-from vink.tasker import Tasker
 from vink.utils.input_validation import (
     pretty_errors,
     validate_arguments,
@@ -142,7 +141,7 @@ class VinkDB:
         # Threading components for ANN auto-switch
         self._ann_building = False
         self._rwlock = rwlock.RWLockFair()
-        self._tasker = Tasker(task=lambda: self._prepare_approx_strategy(), once=True)
+
 
     @property
     def dir_path(self) -> Path:
@@ -244,23 +243,23 @@ class VinkDB:
             self.verbose, "Adding {} vector records to index.", len(vector_records)
         )
 
-        if self.strategy == "exact_search" and self._ann_building:
-            assigned_ids = [r.id for r in records.records]
-            self._records_db.insert(records, buffer=True)
-            log_info(
-                self.verbose,
-                "Successfully added {} records to buffer.",
-                len(assigned_ids),
-            )
-            return assigned_ids
+        if self.strategy == "exact_search":
+            if self._ann_building:
+                assigned_ids = [r.id for r in records.records]
+                self._records_db.insert(records, buffer=True)
+                log_info(
+                    self.verbose,
+                    "Successfully added {} records to buffer.",
+                    len(assigned_ids),
+                )
+                return assigned_ids
 
-        assigned_ids = self._strategy.add(records)
+            assigned_ids = self._strategy.add(records)
 
-        # Check if switch should be triggered based on new count
-        if self.strategy == "exact_search" and self._should_switch():
-            if not self._ann_building:
+            # Check if switch should be triggered based on new count
+            if not self._ann_building and self._should_switch():  
                 self._ann_building = True
-                self._tasker.run()
+                Thread(target=self._prepare_approx_strategy, daemon=True).start()
 
         log_info(
             self.verbose, "Successfully added {} records to index.", len(assigned_ids)
@@ -268,13 +267,13 @@ class VinkDB:
         return assigned_ids
 
     @validate_arguments
-    def delete(self, ids: list[str]) -> None:
-        """Delete vectors from the index by their IDs.
+    def soft_delete(self, ids: list[str]) -> None:
+        """Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids (list[str]): List of UUIDv7 IDs to delete.
+            ids (list[str]): List of UUIDv7 IDs to soft-delete.
         """
-        log_info(self.verbose, "Deleting {} vectors from index.", len(ids))
+        log_info(self.verbose, "Soft-deleting {} vectors from index.", len(ids))
 
         id_bytes = [validate_id(id_str) for id_str in ids]
 
@@ -282,12 +281,30 @@ class VinkDB:
         if self.strategy != "approximate_search" and self._ann_building:
             self._records_db.delete(id_bytes)
             log_info(
-                self.verbose, "Marked {} vectors for deletion in buffer.", len(ids)
+                self.verbose, "Marked {} vectors for soft-deletion in buffer.", len(ids)
             )
             return
 
-        self._strategy.delete(id_bytes)
-        log_info(self.verbose, "Successfully deleted {} vectors.", len(ids))
+        self._strategy.soft_delete(id_bytes)
+
+    def compact(self) -> None:
+        """Hard-delete soft-deleted records and rebuild the index.
+
+        Runs in a background daemon thread so add()/search() remain unblocked.
+
+        Note:
+            For ApproximateSearch, the ANN index is rebuilt only if there are enough
+            active vectors to retrain the codec. If not enough vectors remain, the
+            rebuild is skipped and a warning is logged.
+        """
+        log_info(self.verbose, "Compacting database...")
+
+        def _do_compact():
+            self._strategy.compact()
+            log_info(self.verbose, "Compaction complete.")
+
+        thread = Thread(target=_do_compact, daemon=True)
+        thread.start()
 
     @validate_arguments
     def search(
@@ -353,15 +370,12 @@ class VinkDB:
         complexity = (total_ops / threshold_ops) ** cfg.switch_exp
         return complexity >= 1.0
 
-    def _prepare_approx_strategy(self) -> dict:
+    def _prepare_approx_strategy(self) -> None:
         """
-        Tasker task: Build ANN strategy in daemon thread.
+        Build ANN strategy in a background daemon thread.
 
-        This is the callable submitted to Tasker. It runs in a background
-        daemon thread and returns the new strategy without side effects.
-
-        Returns:
-            dict: An empty dictionnary to satisfy the tasker return type
+        Runs in a daemon thread so add()/search() remain unblocked.
+        Replays buffered records after the strategy switch completes.
         """
         self._strategy._ensure_cache()
         vectors = self._strategy.active_vectors
@@ -376,8 +390,9 @@ class VinkDB:
             in_memory=self._in_memory,
             metric=self.metric,
             verbose=self.verbose,
+            ann_config=self._ann_config,
         )
-        approx_strategy.fit(vectors, ids, self._ann_config)
+        approx_strategy.fit(vectors, ids)
 
         log_info(self.verbose, "ANN index fit complete, switching strategy.")
 

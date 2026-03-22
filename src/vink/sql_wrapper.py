@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from typing import Generator
 
 from vink.models import VectorRecords
 from vink.utils.input_validation import validate_arguments
@@ -83,20 +84,14 @@ class SQLiteWrapper:
         self._conn.commit()
 
     @validate_arguments
-    def delete(self, ids: list[bytes], soft: bool = True) -> None:
-        """Delete vec_records from SQLite."""
+    def soft_delete(self, ids: list[bytes]) -> None:
+        """Soft-delete vec_records from SQLite (marks as deleted)."""
         cursor = self._conn.cursor()
         placeholders = ",".join("?" * len(ids))
-        if soft:
-            cursor.execute(
-                f"UPDATE vec_records SET deleted = TRUE WHERE id IN ({placeholders})",
-                ids,
-            )
-        else:
-            cursor.execute(
-                f"DELETE FROM vec_records WHERE id IN ({placeholders})",
-                ids,
-            )
+        cursor.execute(
+            f"UPDATE vec_records SET deleted = TRUE WHERE id IN ({placeholders})",
+            ids,
+        )
         self._conn.commit()
 
     @validate_arguments
@@ -133,3 +128,20 @@ class SQLiteWrapper:
         cursor = self._conn.cursor()
         cursor.execute("UPDATE vec_records SET buffer = FALSE WHERE buffer = TRUE")
         self._conn.commit()
+
+    def compact(self) -> None:
+        """Hard-delete all soft-deleted records from SQLite."""
+        cursor = self._conn.cursor()
+        cursor.execute("DELETE FROM vec_records WHERE deleted = TRUE")
+        self._conn.commit()
+
+    def iter_embeddings(self, batch_size: int = 50000) -> Generator[list, None, None]:
+        """Iterate over embeddings in batches."""
+        cursor = self._conn.cursor()
+        cursor.execute(f"SELECT embedding FROM vec_records")
+
+        while True:
+            rows = cursor.fetchmany(batch_size)
+            if not rows:
+                break
+            yield [row[0] for row in rows]
