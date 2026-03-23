@@ -42,7 +42,7 @@ class FilterToSql:
     r_bool_val = re.compile(r"\b(?:True|False)\b")
 
     START = [
-        ((r_ident,), "field name (e.g., category, price)"),
+        ((r_ident,), "field name (e.g., category, content)"),
         ((r_ops,), "comparison operator (==, !=, >=, <=, >, <)"),
         ((r_string, r_num, r_bool_val), "quoted string, number or a titled boolean value"),
      ]
@@ -63,44 +63,22 @@ class FilterToSql:
         query_params = []
  
         for idx, line in enumerate(filters):
-            curr_col = 0
-            curr_substring = line
-            sequence = [] 
-
-            for pat, expect in self.START:
-                success = []
-                for alt in pat:
-                    # Handle whitespace    
-                    num_spaces = len(curr_substring) - len(curr_substring.lstrip())    
-                    curr_col += num_spaces    
-                    curr_substring = curr_substring[num_spaces:]  
-                 
-                    m = alt.match(curr_substring)
-                    if not m:
-                        success.append(False)
-                        continue
-                    
-                    success.append(True)    
-                    sequence.append(m.group())
-                    match_len = m.span()[1]
-                    curr_substring = curr_substring[match_len:]
-                    curr_col += match_len
-                    break
+            res = self._parse_expression(line)
                        
-                if not any(success):
-                    found = curr_substring.split()[0] if curr_substring.strip() else "end of input"
-                    raise FilterError(f"error at index {idx}, col {curr_col}, found: {found}, expecting: {expect}")
-             
-            if curr_substring:
-                raise FilterError(f"error at index {idx}, col {curr_col}, expecting: end of statement")
- 
-            operator = "=" if sequence[1] == "==" else sequence[1]  # Normalize to sql syntax
-            field = sequence[0]
+            if not res["success"]:
+                raise FilterError(
+                    f"error at index {idx}, col {res['col']}, found: {res['found']}, expecting: {res['expect']}"
+                )
+
+            sequence = res['sequence']
+
+            field = sequence[0]    
             if field == "content":
                 field = "content_fts MATCH "
             else:
-                field = f"json_extract(metadata, '$.{field}')"
+                field = f"metadata ->> {field}"
 
+            operator = "=" if sequence[1] == "==" else sequence[1]  # Normalize to sql syntax
             all_conditions.append(f"{field} {operator} ?")
 
             literal = sequence[2]
@@ -116,6 +94,62 @@ class FilterToSql:
         nl = "\n"
         final_expr = f"{nl.join(f'({cond})' for cond in all_conditions)}"
         return final_expr, query_params
+
+    def _parse_expression(self, line: str) -> dict:
+        """Parse a single filter expression into a sequence of tokens.
+        Args:
+            line (str): Filter expression string.
+        Returns:
+            dict: Success dict with 'sequence' key, or error dict with 'expect' key.
+        """
+        curr_col = 0
+        curr_substring = line
+        sequence = []
+        for pat, expect in self.START:
+            has_match = False
+            for alt in pat:
+                # Handle whitespace  
+                num_spaces = len(curr_substring) - len(curr_substring.lstrip())
+                curr_col += num_spaces
+                curr_substring = curr_substring[num_spaces:]
+
+                if not curr_substring:
+                    return {
+                        "success": False,
+                        "expect": expect,
+                        "found": "end of input",
+                        "col": curr_col
+                    }
+                m = alt.match(curr_substring)
+                if not m:
+                    has_match = False
+                    continue
+
+                has_match = True
+                sequence.append(m.group())
+                match_len = m.span()[1]
+                curr_substring = curr_substring[match_len:]
+                curr_col += match_len
+                break
+
+            if not has_match:
+                found = curr_substring.split()[0] 
+                return {
+                    "success": False,
+                    "expect": expect,
+                    "found": found,
+                    "col": curr_col
+                }
+
+        if curr_substring:
+            return {
+                "success": False,
+                "expect": "end of statement",
+                "found": curr_substring.strip(),
+                "col": curr_col
+            }
+
+        return {"success": True, "sequence": sequence}
 
     def _cast_value(self, val: str):
         """Cast a value to a string or number else keep as is."""
