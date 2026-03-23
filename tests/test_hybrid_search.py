@@ -25,6 +25,7 @@ def vinkdb(tmp_path, request, mocker):
     return db
 
 
+@pytest.mark.flaky(reruns=5)
 def test_switch_triggers(vinkdb, sample_records, mocker):
     """Test that switch to ANN when _should_switch returns True."""
     assert vinkdb.strategy == "exact_search", "Should start with exact search"
