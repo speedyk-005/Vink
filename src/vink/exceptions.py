@@ -26,3 +26,9 @@ class IndexNotFittedError(Exception):
     """Raised when an operation requiring learned quantization is called on an unitialized index."""
 
     pass
+
+
+class FilterError(InvalidInputError):
+    """Raised when a filter expression fails to parse."""
+
+    pass

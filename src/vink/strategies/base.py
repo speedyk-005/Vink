@@ -87,6 +87,7 @@ class BaseStrategy(ABC):
         query_vec: np.ndarray,
         top_k: int = 10,
         include_vectors: bool = False,
+        filters: list[str] | None = None,
     ) -> list[dict]:
         """Search for k nearest neighbors using the configured metric.
 
@@ -95,6 +96,7 @@ class BaseStrategy(ABC):
             top_k (int, optional): Number of nearest neighbors to return. Defaults to 10.
             include_vectors (bool, optional): If True, include 'embedding' key in results.
                 Defaults to False.
+            filters (list[str] | None, optional): Filter expressions to apply before scoring.
 
         Returns:
             list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
