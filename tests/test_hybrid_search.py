@@ -39,7 +39,7 @@ def test_switch_triggers(vinkdb, sample_records, mocker):
 
     assert vinkdb._ann_building is True, "Rerun test - ANN build may complete too fast to catch"
 
-    # Poll until build completes (max 5 seconds)
+    # Poll until build completes
     timeout = 5
     start = time.time()
     while vinkdb._ann_building and (time.time() - start) < timeout:

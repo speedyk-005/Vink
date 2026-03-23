@@ -76,7 +76,7 @@ class FilterToSql:
             if field == "content":
                 field = "content_fts MATCH "
             else:
-                field = f"metadata ->> {field}"
+                field = f"metadata ->> '{field}'"
 
             operator = "=" if sequence[1] == "==" else sequence[1]  # Normalize to sql syntax
             all_conditions.append(f"{field} {operator} ?")
