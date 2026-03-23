@@ -108,6 +108,7 @@ class ExactSearch(BaseStrategy):
 
             if not is_buffer:
                 self.db.insert(vector_records)
+                self.db.commit()
 
         return assigned_ids
 
@@ -125,26 +126,11 @@ class ExactSearch(BaseStrategy):
                     self.mask[idx] = False
 
             self.db.soft_delete(ids)
+            self.db.commit()
 
             # Invalidate cache
             self.active_vectors = None
             self.active_ids = None
-
-    def compact(self) -> None:
-        """Hard-delete soft-deleted records and rebuild the index."""
-        with self._rwlock.gen_wlock():
-            active_indices = self.mask.nonzero()[0]
-
-            self.active_vectors = np.vstack(self.all_vectors).astype(
-                np.float32, copy=False
-            )[active_indices]
-            self.active_ids = np.array(self.all_ids, dtype="S16")[active_indices]
-
-            self.all_vectors = self.active_vectors.tolist()
-            self.all_ids = self.active_ids.tolist()
-            self.mask = np.ones(len(self.all_ids), dtype=bool)
-
-            self.db.compact()
 
     def search(
         self,
@@ -204,6 +190,23 @@ class ExactSearch(BaseStrategy):
         id_to_row = {row[0]: row for row in rows}
 
         return self._build_results(ids, scores, id_to_row, include_vectors)
+
+    def compact(self) -> None:
+        """Hard-delete soft-deleted records and rebuild the index."""
+        with self._rwlock.gen_wlock():
+            active_indices = self.mask.nonzero()[0]
+
+            self.active_vectors = np.vstack(self.all_vectors).astype(
+                np.float32, copy=False
+            )[active_indices]
+            self.active_ids = np.array(self.all_ids, dtype="S16")[active_indices]
+
+            self.all_vectors = self.active_vectors.tolist()
+            self.all_ids = self.active_ids.tolist()
+            self.mask = np.ones(len(self.all_ids), dtype=bool)
+
+            self.db.compact()
+            self.db.commit()
 
     def _cosine_similarity(
         self,

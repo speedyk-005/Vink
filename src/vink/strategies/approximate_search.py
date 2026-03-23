@@ -227,6 +227,7 @@ class ApproximateSearch(BaseStrategy):
         self.index.add(np.vstack(embeddings))
         if not is_buffer:
             self.db.insert(vector_records)
+            self.db.commit()
 
         self._delta_since_reconfig += len(vector_records.records)
         if self._delta_since_reconfig >= self.reconfig_threshold:
@@ -253,6 +254,7 @@ class ApproximateSearch(BaseStrategy):
                     self.mask[idx] = False
 
             self.db.soft_delete(ids)
+            self.db.commit()
 
             # Invalidate cache
             self.active_ids = None
