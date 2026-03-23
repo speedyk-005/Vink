@@ -10,6 +10,7 @@ import rii
 
 from vink.exceptions import IndexNotFittedError, InvalidInputError
 from vink.models import AnnConfig
+from vink.filter_parser import FilterToSql
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.base import BaseStrategy
 from vink.utils.logging import log_info
@@ -66,6 +67,7 @@ class ApproximateSearch(BaseStrategy):
         self.metric = self.NANOPQ_METRIC_MAP[metric]
 
         self._rwlock = rwlock.RWLockFair()
+        self._filter_to_sql = FilterToSql()
 
         self.index: rii.Rii | None = None
         self._delta_since_reconfig = 0
@@ -260,6 +262,7 @@ class ApproximateSearch(BaseStrategy):
         query_vec: np.ndarray,
         top_k: int = 10,
         include_vectors: bool = False,
+        filters: list[str] | None = None,
     ) -> list[dict]:
         """Search for k nearest neighbors using the configured metric.
 
@@ -268,6 +271,7 @@ class ApproximateSearch(BaseStrategy):
             top_k (int, optional): Number of nearest neighbors to return. Defaults to 10.
             include_vectors (bool, optional): If True, include 'embedding' key in results.
                 Defaults to False.
+            filters (list[str] | None, optional): Filter expressions to apply before scoring.
 
         Returns:
             list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
@@ -279,24 +283,20 @@ class ApproximateSearch(BaseStrategy):
         self._validate_fitted()
         with self._rwlock.gen_rlock():
             self._ensure_cache()
-            filtered_ids = self.active_ids
 
-            # TODO: support metadata filtering
-            """
-            # Query SQLite for active IDs (structure for metadata filtering later)
-            if metadata_filter_exists:  # (Future capability)
-                cursor = self.conn.cursor()
-                cursor.execute("SELECT id FROM records WHERE ... AND deleted = 0")
-                match_set = {row[0] for row in cursor.fetchall()}
-
-                # Create the mask against your ACTIVE (cached) IDs
-                # This keeps the indices perfectly aligned with your active_vectors matrix
+            if filters:
+                where_clause, params = self._filter_to_sql.translate(filters)
+                rows = self.db.fetch(
+                    where=f"{where_clause} AND deleted = FALSE",
+                    params=params,
+                )
+                match_set = {row[0] for row in rows}
                 temp_mask = np.array([uid in match_set for uid in self.active_ids])
+
                 filtered_ids = self.active_ids[temp_mask]
             else:
                 # Use cached versions
                 filtered_ids = self.active_ids
-            """
 
             ids, scores = self._query_index(query_vec, filtered_ids, top_k)
 

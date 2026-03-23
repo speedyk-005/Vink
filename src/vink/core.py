@@ -312,6 +312,7 @@ class VinkDB:
         query_vec: list[float] | np.ndarray,
         top_k: int = 10,
         include_vectors: bool = False,
+        filters: list[str] | None = None,
     ) -> list[dict]:
         """Search for k nearest neighbors using the configured metric.
 
@@ -321,6 +322,8 @@ class VinkDB:
             top_k (int, optional): Number of nearest neighbors to return. Defaults to 10.
             include_vectors (bool, optional): If True, include 'embedding' key in results.
                 Defaults to False.
+            filters (list[str] | None, optional): Filter expressions to apply before scoring.
+                E.g., ["category == 'science'", "price >= 10"].
 
         Returns:
             list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
@@ -335,7 +338,7 @@ class VinkDB:
 
         query = validate_embedding(query_vec, metric=self._metric)
         results = self._strategy.search(
-            query_vec, top_k=top_k, include_vectors=include_vectors
+            query_vec, top_k=top_k, include_vectors=include_vectors, filters=filters
         )
 
         log_info(self.verbose, "Found {} results for query.", len(results))

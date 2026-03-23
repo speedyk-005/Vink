@@ -55,3 +55,17 @@ def test_force_exact(vinkdb, sample_records, mocker):
     assert vinkdb.force_exact == True, "force_exact should be True"
     assert vinkdb.strategy == "exact_search", "Should stay exact when force_exact=True"
     assert vinkdb._should_switch() == False, "_should_switch should be False"
+
+
+@pytest.mark.parametrize("vinkdb", [{"force_exact": True}], indirect=True)
+def test_search_with_filter(vinkdb, sample_records):
+    """Test that search with filter returns only matching records."""
+    for i, record in enumerate(sample_records):
+        record["metadata"]["category"] = "tech" if i % 2 == 0 else "science"
+
+    vinkdb.add(sample_records)
+
+    query_embedding = sample_records[0]["embedding"]
+    results = vinkdb.search(query_embedding, top_k=4, filters=["category == 'tech'"])
+
+    assert all(r["metadata"]["category"] == "tech" for r in results), "All results should have category=tech"
