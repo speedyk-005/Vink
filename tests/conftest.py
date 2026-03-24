@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 
 from vink.utils.id_generation import generate_id_bytes
+from vink.utils.input_validation import validate_embedding
+
 
 DIM = 128
 SEED = 42
@@ -9,26 +11,23 @@ SEED = 42
 
 @pytest.fixture
 def sample_embeddings(request):
-    """Generate sample embeddings with optional normalization.
+    """Generate sample embeddings using validate_embedding.
 
     Usage:
-        # Default (not normalized)
+        # Default (euclidean)
         def test_foo(sample_embeddings): ...
 
-        # Normalized
-        @pytest.mark.parametrize("sample_embeddings", [{"normalize": True}], indirect=True)
+        # Cosine metric
+        @pytest.mark.parametrize("sample_embeddings", [{"metric": "cosine"}], indirect=True)
         def test_bar(sample_embeddings): ...
     """
-    params = getattr(request, "param", {"normalize": False})
+    params = getattr(request, "param", {"metric": "euclidean"})
+    metric = params.get("metric", "euclidean")
 
     rng = np.random.default_rng(SEED)
     embeddings = rng.standard_normal((1, DIM), dtype=np.float32)
 
-    if params.get("normalize"):
-        norm = np.linalg.norm(embeddings, axis=1, keepdims=True)
-        embeddings = embeddings / (norm + 1e-9)
-
-    return embeddings
+    return validate_embedding(embeddings, metric=metric)
 
 
 @pytest.fixture
@@ -50,14 +49,12 @@ def sample_records(request):
     records = []
     for i in range(num):
         vec = rng.standard_normal(DIM, dtype=np.float32)
-        norm = np.linalg.norm(vec)
-        vec = vec / norm
         records.append(
             {
                 "id": generate_id_bytes(),
                 "content": f"test document {i}",
                 "metadata": {"index": i},
-                "embedding": vec,
+                "embedding": validate_embedding(vec),
             }
         )
     return records

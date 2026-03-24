@@ -21,9 +21,7 @@ class SQLiteWrapper:
     @validate_arguments
     def __init__(self, path: str):
         self._conn = sqlite3.connect(path, check_same_thread=False, timeout=10)
-        self._conn.execute(
-            "PRAGMA journal_mode=WAL;"
-        )  # allows concurrent reads and writes
+        self._conn.execute("PRAGMA journal_mode=WAL;")
         self._ensure_tables_exist()
 
     @property
@@ -52,8 +50,11 @@ class SQLiteWrapper:
             CREATE INDEX IF NOT EXISTS idx_vec_records_buffer ON vec_records(buffer);
         """)
 
+    def commit(self) -> None:
+        """Explicitly commit the current transaction."""
         self._conn.commit()
 
+    @validate_arguments
     def insert(self, vec_records: VectorRecords, buffer: bool = False) -> None:
         """Insert vec_records into SQLite.
 
@@ -81,7 +82,6 @@ class SQLiteWrapper:
             "INSERT INTO content_fts5 (id, content) VALUES (?, ?)",
             [(r["id"], r["content"]) for r in records],
         )
-        self._conn.commit()
 
     @validate_arguments
     def soft_delete(self, ids: list[bytes]) -> None:
@@ -92,7 +92,6 @@ class SQLiteWrapper:
             f"UPDATE vec_records SET deleted = TRUE WHERE id IN ({placeholders})",
             ids,
         )
-        self._conn.commit()
 
     @validate_arguments
     def fetch(
@@ -127,18 +126,17 @@ class SQLiteWrapper:
         """Set all buffer flags to False."""
         cursor = self._conn.cursor()
         cursor.execute("UPDATE vec_records SET buffer = FALSE WHERE buffer = TRUE")
-        self._conn.commit()
 
     def compact(self) -> None:
         """Hard-delete all soft-deleted records from SQLite."""
         cursor = self._conn.cursor()
         cursor.execute("DELETE FROM vec_records WHERE deleted = TRUE")
-        self._conn.commit()
 
+    @validate_arguments
     def iter_embeddings(self, batch_size: int = 50000) -> Generator[list, None, None]:
         """Iterate over embeddings in batches."""
         cursor = self._conn.cursor()
-        cursor.execute(f"SELECT embedding FROM vec_records")
+        cursor.execute("SELECT embedding FROM vec_records")
 
         while True:
             rows = cursor.fetchmany(batch_size)

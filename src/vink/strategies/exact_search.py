@@ -59,26 +59,24 @@ class ExactSearch(BaseStrategy):
         self.mask: np.ndarray = np.array([], dtype=bool)
 
         # Cache placeholders
-        self.active_vectors: np.ndarray | None = None
-        self.active_ids: np.ndarray | None = None
+        self.active_vectors_arr = None
+        self.active_ids_arr = None
 
     def _ensure_cache(self) -> None:
         """Build cache of active vectors and IDs if not already cached."""
-        if not (self.active_vectors is None or self.active_ids is None):
+        if not (self.active_vectors_arr is None or self.active_ids_arr is None):
             return
 
         # Caller holds the lock; no nested lock acquisition.
         active_indices = self.mask.nonzero()[0]
 
         if len(active_indices) == 0:
-            self.active_vectors = np.empty((0, self.dim), dtype=np.float32)
-            self.active_ids = np.empty((0,), dtype="S16")
+            self.active_vectors_arr = np.empty((0, self.dim), dtype=np.float32)
+            self.active_ids_arr = np.empty((0,), dtype="S16")
             return
 
-        self.active_vectors = np.vstack(self.all_vectors).astype(
-            np.float32, copy=False
-        )[active_indices]
-        self.active_ids = np.array(self.all_ids, dtype="S16")[active_indices]
+        self.active_vectors_arr = np.vstack(self.all_vectors)[active_indices]
+        self.active_ids_arr = np.array(self.all_ids, dtype="S16")[active_indices]
 
     def add(self, vector_records, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
@@ -101,8 +99,8 @@ class ExactSearch(BaseStrategy):
                 self.mask = np.append(self.mask, True)
 
                 # Invalidate cache
-                self.active_vectors = None
-                self.active_ids = None
+                self.active_vectors_arr = None
+                self.active_ids_arr = None
 
                 assigned_ids.append(self._bytes_to_uuid_str(record.id))
 
@@ -127,24 +125,8 @@ class ExactSearch(BaseStrategy):
             self.db.soft_delete(ids)
 
             # Invalidate cache
-            self.active_vectors = None
-            self.active_ids = None
-
-    def compact(self) -> None:
-        """Hard-delete soft-deleted records and rebuild the index."""
-        with self._rwlock.gen_wlock():
-            active_indices = self.mask.nonzero()[0]
-
-            self.active_vectors = np.vstack(self.all_vectors).astype(
-                np.float32, copy=False
-            )[active_indices]
-            self.active_ids = np.array(self.all_ids, dtype="S16")[active_indices]
-
-            self.all_vectors = self.active_vectors.tolist()
-            self.all_ids = self.active_ids.tolist()
-            self.mask = np.ones(len(self.all_ids), dtype=bool)
-
-            self.db.compact()
+            self.active_vectors_arr = None
+            self.active_ids_arr = None
 
     def search(
         self,
@@ -176,14 +158,14 @@ class ExactSearch(BaseStrategy):
                     params=params,
                 )
                 match_set = {row[0] for row in rows}
-                temp_mask = np.array([uid in match_set for uid in self.active_ids])
+                temp_mask = np.array([uid in match_set for uid in self.active_ids_arr])
 
-                filtered_vectors = self.active_vectors[temp_mask]
-                filtered_ids = self.active_ids[temp_mask]
+                filtered_vectors = self.active_vectors_arr[temp_mask]
+                filtered_ids = self.active_ids_arr[temp_mask]
             else:
                 # Use cached versions
-                filtered_vectors = self.active_vectors
-                filtered_ids = self.active_ids
+                filtered_vectors = self.active_vectors_arr
+                filtered_ids = self.active_ids_arr
 
         if self.metric == "cosine":
             ids, scores = self._cosine_similarity(
@@ -204,6 +186,52 @@ class ExactSearch(BaseStrategy):
         id_to_row = {row[0]: row for row in rows}
 
         return self._build_results(ids, scores, id_to_row, include_vectors)
+
+    def compact(self) -> None:
+        """Hard-delete soft-deleted records and rebuild the index."""
+        with self._rwlock.gen_wlock():
+            active_indices = self.mask.nonzero()[0]
+
+            self.active_vectors_arr = np.vstack(self.all_vectors).astype(
+                np.float32, copy=False
+            )[active_indices]
+            self.active_ids_arr = np.array(self.all_ids, dtype="S16")[active_indices]
+
+            self.all_vectors = self.active_vectors_arr.tolist()
+            self.all_ids = self.active_ids_arr.tolist()
+            self.mask = np.ones(len(self.all_ids), dtype=bool)
+
+            self.db.compact()
+
+    def save(self) -> None:
+        """Save the index to disk by committing the database."""
+        self.db.commit()
+
+    def load(self, overwrite: bool) -> None:
+        """Load the index from SQLite.
+
+        Args:
+            overwrite (bool): If True, replace in-memory state with loaded data.
+        """
+        if not overwrite and self.all_ids:
+            log_info(self.verbose, "Index already loaded, skipping.")
+            return
+
+        if self.db.count() == 0:
+            return
+
+        with self._rwlock.gen_wlock():
+            cursor = self.db.conn.execute("SELECT id, embedding, deleted FROM vec_records")
+            rows = cursor.fetchall()
+
+            self.all_ids = [row[0] for row in rows]
+            self.all_vectors = np.vstack([row[1] for row in rows])
+            self.mask = np.array([row[2] for row in rows], dtype=bool)
+            self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
+
+            # Ensure cache is invalidated
+            self.active_vectors_arr = None
+            self.active_ids_arr = None
 
     def _cosine_similarity(
         self,
@@ -259,6 +287,9 @@ class ExactSearch(BaseStrategy):
         """
         if not ids.any():
             return [], np.array([])
+
+        # FIXME: this logic is wrong for now since we no longer normalized vectors
+        # that arent cosine sim
 
         # Compute L2 distance: sqrt((x - y)^2)
         # Since vectors are normalized: ||x - y||^2 = 2 - 2*(x·y)
