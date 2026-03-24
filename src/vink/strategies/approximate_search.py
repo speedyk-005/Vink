@@ -1,18 +1,17 @@
 import os
-import random
 from pathlib import Path
 from typing import Literal
 
-from loguru import logger
-from readerwriterlock import rwlock
 import larch.pickle as pickle
 import nanopq
 import numpy as np
 import rii
+from loguru import logger
+from readerwriterlock import rwlock
 
 from vink.exceptions import IndexNotFittedError, InvalidInputError
-from vink.models import AnnConfig
 from vink.filter_parser import FilterToSql
+from vink.models import AnnConfig
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.base import BaseStrategy
 from vink.utils.logging import log_info
@@ -84,13 +83,12 @@ class ApproximateSearch(BaseStrategy):
         # Cache placeholder
         self.active_ids_arr = None
 
-        # File paths for save/load
         if self.dir_path is not None:
             self._ann_index_path = self.dir_path / "ann_index.pkl"
-            self._ann_index_temp_path = self.dir_path / "ann_index.pkl.tmp"
+            self._ann_index_wal_path = self.dir_path / "ann_index.pkl.tmp"
         else:
             self._ann_index_path = None
-            self._ann_index_temp_path = None
+            self._ann_index_wal_path = None
 
     def fit(
         self,
@@ -358,13 +356,22 @@ class ApproximateSearch(BaseStrategy):
         """Save the index to disk using double-write strategy for tight syncing."""
         self._validate_fitted()
 
-        with open(self._ann_index_temp_path, "wb") as f:
+        with open(self._ann_index_wal_path, "wb") as f:
             pickle.dump(self.index, f, protocol=5)
+            f.flush()  # Flush internal buffer
             os.fsync(f.fileno())  # Force OS to write to physical disk
 
         self.db.commit()
 
-        self._ann_index_temp_path.replace(self._ann_index_path)
+        self._ann_index_wal_path.replace(self._ann_index_path)
+
+        # Sync the directory
+        # This ensure the 'replace' above survives a power loss
+        dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
 
     def load(self, overwrite: bool) -> None:
         """Load the index from disk.
@@ -375,7 +382,7 @@ class ApproximateSearch(BaseStrategy):
         if not (self._ann_index_path and self._ann_index_path.exists()):
             log_info(self.verbose, "No ANN index file found, skipping index load.")
             return
-            
+
         if not overwrite and self.all_ids:
             log_info(self.verbose, "Index already loaded, skipping.")
             return
@@ -391,24 +398,50 @@ class ApproximateSearch(BaseStrategy):
             self.mask = np.array([row[1] for row in rows], dtype=bool)
             self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
 
-            with open(self._ann_index_path, "rb") as f:
-                self.index = pickle.load(f)
-
-            # Recover from partial save (rare)
-            if len(self.all_ids) > self.index.N and self._ann_index_temp_path.exists():
-                log_info(
-                    self.verbose,
-                    "Partial save detected: DB has {} IDs but index has {} vectors. "
-                    "Recovering from temp file.",
-                    len(self.all_ids),
-                    self.index.N,
-                )
-                with open(self._ann_index_temp_path, "rb") as f:
-                    self.index = pickle.load(f)
-                self._ann_index_temp_path.unlink()    
+            self._safe_load_ann_index()
 
             # Ensure cache is invalidated
             self.active_ids_arr = None
+
+    def _safe_load_ann_index(self):
+        """Safely load the ann index with recovering step in case of desyncronisation"""
+        try:
+            with open(self._ann_index_path, "rb") as f:
+                index = pickle.load(f)
+
+            assert len(self.all_ids) == index.N
+
+            self.index = index
+
+        except (pickle.UnpicklingError, EOFError, AttributeError, AssertionError):
+            # Recover from partial save
+            log_info(self.verbose, "Partial save detected... Recovering from backup file")
+
+            try:
+                with open(self._ann_index_wal_path, "rb") as f:
+                    temp_index = pickle.load(f)
+
+                assert len(self.all_ids) == temp_index.N
+
+                self.index = temp_index
+                self._ann_index_wal_path.replace(self._ann_index_path)
+
+                # Sync the directory
+                dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+
+            # Rare cases
+            except FileNotFoundError:
+                logger.error("Backup file is not found.")
+                raise
+
+            except (pickle.UnpicklingError, EOFError, AttributeError):
+                logger.error("Backup file is corrupted.")
+                self._ann_index_wal_path.unlink()  # Clean up the broken file
+                raise
 
     def _query_index(
         self,
