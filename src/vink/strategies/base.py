@@ -82,6 +82,20 @@ class BaseStrategy(ABC):
         pass
 
     @abstractmethod
+    def save(self) -> None:
+        """Save the index to disk."""
+        pass
+
+    @abstractmethod
+    def load(self, overwrite: bool) -> None:
+        """Load the index from disk.
+
+        Args:
+            overwrite (bool): If True, replace in-memory state with loaded data.
+        """
+        pass
+
+    @abstractmethod
     def search(
         self,
         query_vec: np.ndarray,

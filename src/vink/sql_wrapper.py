@@ -50,8 +50,6 @@ class SQLiteWrapper:
             CREATE INDEX IF NOT EXISTS idx_vec_records_buffer ON vec_records(buffer);
         """)
 
-        self.commit()
-
     def commit(self) -> None:
         """Explicitly commit the current transaction."""
         self._conn.commit()
@@ -107,7 +105,7 @@ class SQLiteWrapper:
         cursor = self._conn.cursor()
 
         include_emb = ", embedding " if include_vectors else ""
-        sql = """
+        sql = f"""
             SELECT vec_records.id, content, json(metadata) {include_emb}
             FROM vec_records
             JOIN content_fts5 USING (id)

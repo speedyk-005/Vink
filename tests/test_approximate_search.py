@@ -1,37 +1,21 @@
-import numpy as np
-import time
-import pysqlite3 as sqlite3
 import pytest
+import time
+import tempfile
+import numpy as np
+from pathlib import Path
+import pysqlite3 as sqlite3
 
 from vink.models import AnnConfig, VectorRecords
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.approximate_search import ApproximateSearch
 from vink.utils.id_generation import generate_id_bytes
 
+
 IDS_TO_DELETE = []
 
 
 @pytest.fixture(scope="module")
-def in_memory_db():
-    """Create an in-memory SQLite database for testing."""
-    conn = sqlite3.connect(":memory:")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS records (
-            id BLOB PRIMARY KEY,
-            content TEXT NOT NULL,
-            metadata BLOB NOT NULL,
-            embedding BLOB,
-            deleted BOOLEAN DEFAULT 0
-        )
-    """)
-    conn.commit()
-    yield conn
-    conn.close()
-
-
-@pytest.fixture(scope="module")
-def approx_search_strategy(in_memory_db):
+def approx_search_strategy():
     """Create an ApproximateSearchStrategy instance for testing."""
     config = AnnConfig(num_subspaces=4, codebook_size=8)
 
@@ -109,7 +93,7 @@ def test_soft_delete(approx_search_strategy):
     time.sleep(0.2)
     approx_search_strategy._ensure_cache()
 
-    n_ids = len(approx_search_strategy.active_ids)
+    n_ids = len(approx_search_strategy.active_ids_arr)
     n_mask = sum(approx_search_strategy.mask)
     expected = 2  # the two ones added in the test above
 
@@ -174,3 +158,50 @@ def test_compact(approx_search_strategy):
     cursor = approx_search_strategy.db.conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = TRUE")
     assert cursor.fetchone()[0] == 0, "All soft-deleted records should be hard-deleted from SQLite"
+
+
+def test_save_load(sample_embeddings):
+    """Test that save persists index and load restores it correctly."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        db = SQLiteWrapper(f"{tmp_path}/records.sqlite")
+        config = AnnConfig(num_subspaces=4, codebook_size=8)
+        strategy = ApproximateSearch(
+            db=db,
+            dir_path=tmp_path,
+            dim=128,
+            in_memory=False,
+            metric="euclidean",
+            verbose=False,
+            ann_config=config,
+        )
+
+        rng = np.random.default_rng(seed=42)
+        vectors = rng.standard_normal((10, 128), dtype=np.float32)
+
+        ids = [generate_id_bytes() for _ in range(10)]
+        strategy.fit(vectors, np.array(ids, dtype="S16"))
+
+        records = [
+            {"id": id, "content": f"content {i}", "metadata": {"i": i}, "embedding": vec}
+            for i, (id, vec) in enumerate(zip(ids, vectors))
+        ]
+        strategy.db.insert(VectorRecords(dim=128, metric="euclidean", records=records))
+        strategy.save()
+
+        assert (tmp_path / "ann_index.pkl").exists(), "Index file should exist"
+
+        strategy2 = ApproximateSearch(
+            db=SQLiteWrapper(f"{tmp_path}/records.sqlite"),
+            dir_path=tmp_path,
+            dim=128,
+            in_memory=False,
+            metric="euclidean",
+            verbose=True,
+            ann_config=config,
+        )
+        strategy2.load(overwrite=True)
+
+        assert strategy2.index is not None, "Index should be loaded"
+        assert strategy2.index.N == 10, f"Expected 10 vectors, got {strategy2.index.N}"
+        assert len(strategy2.all_ids) == 10, f"Expected 10 IDs, got {len(strategy2.all_ids)}"

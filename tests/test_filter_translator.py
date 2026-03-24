@@ -1,4 +1,5 @@
 import pytest
+
 from vink.filter_parser import FilterToSql
 from vink.exceptions import FilterError
 

@@ -1,9 +1,9 @@
-import time
-
 import pytest
+import time
 
 from vink import VinkDB
 from vink.models import AnnConfig
+
 
 DIM = 128
 

@@ -1,44 +1,28 @@
-import time
-import numpy as np
-import pysqlite3 as sqlite3
 import pytest
+import time
+import tempfile
+import numpy as np
+from pathlib import Path
+import pysqlite3 as sqlite3
 
 from vink.models import VectorRecords
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.exact_search import ExactSearch
 from vink.utils.id_generation import generate_id_bytes
 
+
 IDS_TO_DELETE = [generate_id_bytes() for _ in range(2)]
 
 
 @pytest.fixture(scope="module")
-def in_memory_db():
-    """Create an in-memory SQLite database for testing."""
-    conn = sqlite3.connect(":memory:")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS records (
-            id BLOB PRIMARY KEY,
-            content TEXT NOT NULL,
-            metadata BLOB NOT NULL,
-            embedding BLOB,
-            deleted BOOLEAN DEFAULT 0
-        )
-    """)
-    conn.commit()
-    yield conn
-    conn.close()
-
-
-@pytest.fixture(scope="module")
-def exact_search_strategy(in_memory_db):
+def exact_search_strategy():
     """Create an ExactSearchStrategy instance for testing."""
     return ExactSearch(
         db=SQLiteWrapper(":memory:"),
         dir_path=None,
         dim=128,
         in_memory=True,
-        metric="l2",
+        metric="euclidean",
         verbose=False,
     )
 
@@ -95,8 +79,8 @@ def test_soft_delete(exact_search_strategy):
     time.sleep(0.2)
     exact_search_strategy._ensure_cache()
 
-    n_ids = len(exact_search_strategy.active_ids)
-    n_vecs = len(exact_search_strategy.active_vectors)
+    n_ids = len(exact_search_strategy.active_ids_arr)
+    n_vecs = len(exact_search_strategy.active_vectors_arr)
     n_mask = sum(exact_search_strategy.mask)
     expected = 2
 
@@ -154,3 +138,42 @@ def test_compact(exact_search_strategy):
     cursor = exact_search_strategy.db.conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = TRUE")
     assert cursor.fetchone()[0] == 0, "All soft-deleted records should be hard-deleted from SQLite"
+
+
+def test_save_load(sample_embeddings):
+    """Test that save persists data and load restores it correctly."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        db = SQLiteWrapper(f"{tmp_path}/records.sqlite")
+        strategy = ExactSearch(
+            db=db,
+            dir_path=tmp_path,
+            dim=128,
+            in_memory=False,
+            metric="euclidean",
+            verbose=False,
+        )
+
+        records = [
+            {"content": f"content {i}", "metadata": {"i": i}, "embedding": sample_embeddings}
+            for i in range(3)
+        ]
+        original_ids = strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
+
+        strategy.save()
+
+        strategy2 = ExactSearch(
+            db=SQLiteWrapper(f"{tmp_path}/records.sqlite"),
+            dir_path=tmp_path,
+            dim=128,
+            in_memory=False,
+            metric="euclidean",
+            verbose=False,
+        )
+        strategy2.load(overwrite=True)
+
+        assert len(strategy2.all_ids) == 3, f"Expected 3 IDs, got {len(strategy2.all_ids)}"
+        assert len(strategy2.all_vectors) == 3, f"Expected 3 vectors, got {len(strategy2.all_vectors)}"
+        assert len(strategy2.id_to_idx) == 3, f"Expected 3 id_to_idx entries, got {len(strategy2.id_to_idx)}"
+        new_ids = [strategy2._bytes_to_uuid_str(id_bytes) for id_bytes in strategy2.all_ids]
+        assert set(new_ids) == set(original_ids), "Loaded IDs don't match original IDs"

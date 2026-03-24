@@ -306,6 +306,23 @@ class VinkDB:
         thread = Thread(target=_do_compact, daemon=True)
         thread.start()
 
+    def save(self) -> None:
+        """Save the index to disk."""
+        log_info(self.verbose, "Saving index to {}.", self._dir_path)
+        self._strategy.save(save_path)
+        log_info(self.verbose, "Index saved successfully.")
+
+    def load(self, overwrite: bool = False) -> None:
+        """Load the index from disk.
+
+        Args:
+            overwrite (bool): If True, replace in-memory state with loaded data.
+                Defaults to False.
+        """
+        log_info(self.verbose, "Loading index from {}.", self._dir_path)
+        self._strategy.load(overwrite=overwrite)
+        log_info(self.verbose, "Index loaded successfully.")
+
     @validate_arguments
     def search(
         self,
@@ -369,7 +386,6 @@ class VinkDB:
         total_ops = self._dim * n_vecs
         threshold_ops = 1_000_000
 
-        # Normalized Power-Law: (x/ref)^exp
         complexity = (total_ops / threshold_ops) ** cfg.switch_exp
         return complexity >= 1.0
 
@@ -381,8 +397,8 @@ class VinkDB:
         Replays buffered records after the strategy switch completes.
         """
         self._strategy._ensure_cache()
-        vectors = self._strategy.active_vectors
-        ids = self._strategy.active_ids
+        vectors = self._strategy.active_vectors_arr
+        ids = self._strategy.active_ids_arr
 
         from vink.strategies.approximate_search import ApproximateSearch
 
@@ -403,6 +419,7 @@ class VinkDB:
         self._switch_to_approx_strategy(approx_strategy)
 
     def _switch_to_approx_strategy(self, strategy) -> None:
+        """Switch to approximate search and auto dumps buffer."""
         with self._rwlock.gen_wlock():
             self._strategy = strategy
 
@@ -415,7 +432,7 @@ class VinkDB:
         )
 
         if not buffer_rows:
-             return
+            return
 
         records = [
             {
@@ -439,11 +456,19 @@ class VinkDB:
         can proceed immediately after the strategy swap, without waiting
         for the buffer dump to complete.
         """
-        strategy.add(VectorRecords(dim=self._dim, metric=self._metric, records=records), is_buffer=True)
+        strategy.add(VectorRecords(dim=self.dim, metric=self.metric, records=records), is_buffer=True)
         self._records_db.clear_buffer()
         log_info(
             self.verbose,
             "Buffer dump: added {} vectors to ANN index.",
             len(records),
         )
-        log_info(self.verbose, "Buffer dump to ANN index completed.")
+
+    def __enter__(self) -> "VinkDB":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_type:
+            logger.error(f"Transaction failed: {exc_val}")
+            return False # Tell python to reraise it
+        self.save()
