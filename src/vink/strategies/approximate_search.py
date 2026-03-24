@@ -435,7 +435,7 @@ class ApproximateSearch(BaseStrategy):
         # Map application IDs to internal index offsets
         target_indices = np.array([self.id_to_idx[uid] for uid in ids if uid in self.id_to_idx])
 
-        if not target_indices:
+        if len(target_indices) == 0:
             return [], np.array([])
 
         # If OPQ is active, the query must be rotated into the same

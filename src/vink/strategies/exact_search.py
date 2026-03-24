@@ -288,15 +288,7 @@ class ExactSearch(BaseStrategy):
         if not ids.any():
             return [], np.array([])
 
-        # FIXME: this logic is wrong for now since we no longer normalized vectors
-        # that arent cosine sim
-
-        # Compute L2 distance: sqrt((x - y)^2)
-        # Since vectors are normalized: ||x - y||^2 = 2 - 2*(x·y)
-        similarities = (vectors @ query_vec.T).flatten()
-        distances = np.sqrt(
-            (2 - 2 * similarities).clip(min=0)
-        )  # Clip for numerical stability
+        distances = np.sqrt(np.sum((vectors - query_vec) ** 2, axis=1))
 
         # Sort by distance in ascending order (closest first)
         indices = np.argsort(distances)[:top_k]
