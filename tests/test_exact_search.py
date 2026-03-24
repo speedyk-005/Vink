@@ -18,7 +18,7 @@ IDS_TO_DELETE = [generate_id_bytes() for _ in range(2)]
 def exact_search_strategy():
     """Create an ExactSearchStrategy instance for testing."""
     return ExactSearch(
-        db=SQLiteWrapper(":memory:"),
+        db=SQLiteWrapper(":memory:", index_config={}),
         dir_path=None,
         dim=128,
         in_memory=True,
@@ -144,7 +144,7 @@ def test_save_load(sample_embeddings):
     """Test that save persists data and load restores it correctly."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        db = SQLiteWrapper(f"{tmp_path}/records.sqlite")
+        db = SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={})
         strategy = ExactSearch(
             db=db,
             dir_path=tmp_path,
@@ -163,7 +163,7 @@ def test_save_load(sample_embeddings):
         strategy.save()
 
         strategy2 = ExactSearch(
-            db=SQLiteWrapper(f"{tmp_path}/records.sqlite"),
+            db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={}),
             dir_path=tmp_path,
             dim=128,
             in_memory=False,

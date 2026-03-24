@@ -20,7 +20,7 @@ def approx_search_strategy():
     config = AnnConfig(num_subspaces=4, codebook_size=8)
 
     strategy = ApproximateSearch(
-        db=SQLiteWrapper(":memory:"),
+        db=SQLiteWrapper(":memory:", index_config={}),
         dir_path=None,
         dim=128,
         in_memory=True,
@@ -164,7 +164,7 @@ def test_save_load(sample_embeddings):
     """Test that save persists index and load restores it correctly."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        db = SQLiteWrapper(f"{tmp_path}/records.sqlite")
+        db = SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={})
         config = AnnConfig(num_subspaces=4, codebook_size=8)
         strategy = ApproximateSearch(
             db=db,
@@ -192,7 +192,7 @@ def test_save_load(sample_embeddings):
         assert (tmp_path / "ann_index.pkl").exists(), "Index file should exist"
 
         strategy2 = ApproximateSearch(
-            db=SQLiteWrapper(f"{tmp_path}/records.sqlite"),
+            db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={}),
             dir_path=tmp_path,
             dim=128,
             in_memory=False,

@@ -1,20 +1,19 @@
 import json
 import math
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
-from readerwriterlock import rwlock
+import numpy as np
 from threading import Thread
 from typing import Callable, Literal
 
-import numpy as np
+from readerwriterlock import rwlock
 import regex as re
 from pydantic import ValidationError
 
-from vink.exceptions import InvalidInputError, VectorDimensionError
-from vink.models import AnnConfig, VectorRecords
-
 # The strategies are lazy imported
 
+from vink.strategies.base import BaseStrategy
 from vink.sql_wrapper import SQLiteWrapper
 from vink.utils.input_validation import (
     pretty_errors,
@@ -23,7 +22,8 @@ from vink.utils.input_validation import (
     validate_id,
 )
 from vink.utils.logging import log_info
-
+from vink.models import AnnConfig, VectorRecords
+from vink.exceptions import InvalidInputError, VectorDimensionError
 
 class VinkDB:
     """
@@ -88,8 +88,8 @@ class VinkDB:
                 If False, switches between exact and ANN based on switch_exp.
                 Defaults to False.
             ann_config (AnnConfig, optional): Configuration for approximate nearest neighbor search.
+                Used during switching and compacting. Defaults to ANNConfig with standard settings.
                 Only applicable when force_exact is False.
-                If not provided, defaults to ANNConfig with standard settings.
             embedding_callback (Callable, optional): Callback function to generate embeddings
                 from content. If provided, 'embedding' key is optional in
                 vector records as it will be generated via this callback. Defaults to None.
@@ -102,16 +102,14 @@ class VinkDB:
         self._dir_path = Path(dir_path)
         self._dim = dim
         self._metric = metric
-
-        self._force_exact = force_exact
         self._ann_config = ann_config
+        self._force_exact = force_exact
+        self.embedding_callback = embedding_callback
+        self.verbose = verbose
 
         # Default the config with standard settings if force_exact is not true
         if not (self._force_exact or self._ann_config):
             self._ann_config = AnnConfig()
-
-        self.embedding_callback = embedding_callback
-        self.verbose = verbose
 
         self._validate_config()
 
@@ -124,19 +122,15 @@ class VinkDB:
         else:
             self._records_db_path = ":memory:"
 
-        self._records_db = SQLiteWrapper(self._records_db_path)
+        index_config = {
+            "dimension": str(self._dim),
+            "metric": self._metric,
+            "strategy": "exact",
+        }
+        self._records_db = SQLiteWrapper(self._records_db_path, index_config=index_config)
 
-        # Initialize with ExactSearchStrategy by default
-        from vink.strategies.exact_search import ExactSearch
-
-        self._strategy = ExactSearch(
-            db=self._records_db,
-            dir_path=self._dir_path if not self._in_memory else None,
-            dim=self._dim,
-            in_memory=self._in_memory,
-            metric=self.metric,
-            verbose=self.verbose,
-        )
+        self._strategy: BaseStrategy | None = None
+        self.load()
 
         # Threading components for ANN auto-switch
         self._ann_building = False
@@ -166,18 +160,32 @@ class VinkDB:
     @property
     def strategy(self) -> str:
         """The internal indexing strategy currently active, formatted in snake_case."""
+        if self._strategy is None:
+            return "exact_search"
+
         strategy_name = self._strategy.__class__.__name__
         parts = re.split(r"(?<!^)(?=\p{LU})", strategy_name)
         return "_".join([p.lower() for p in parts])
 
-    @property
-    def ann_config(self) -> dict:
-        """The ANN configuration settings as a dictionary."""
-        return self._ann_config.model_dump() if self._ann_config else {}
-
     def count(self) -> int:
         """Count the number of active (non-deleted) vectors in the database."""
         return self._records_db.count()
+
+    def stats(self) -> dict:  # pragma: no cover
+        """Return database statistics and metadata.
+
+        Returns:
+            dict: Database metadata including version, dimension, metric, strategy,
+                last_saved_at, last_deleted_at, and other stored metadata.
+        """
+        return {
+            "version": self._records_db["version"],
+            "dimension": self._records_db["dimension"],
+            "metric": self._records_db["metric"],
+            "strategy": self._records_db["strategy"],
+            "last_saved_at": self._records_db["last_saved_at"],
+            "last_deleted_at": self._records_db["last_deleted_at"],
+        }
 
     def _validate_config(self) -> None:
         """
@@ -246,7 +254,7 @@ class VinkDB:
         if self.strategy == "exact_search":
             if self._ann_building:
                 assigned_ids = [r.id for r in records.records]
-                self._records_db.insert(records, buffer=True)
+                self._records_db.insert(records, is_buffer=True)
                 log_info(
                     self.verbose,
                     "Successfully added {} records to buffer.",
@@ -279,13 +287,15 @@ class VinkDB:
 
         # If ANN is building, write to buffer for replay after switch
         if self.strategy != "approximate_search" and self._ann_building:
-            self._records_db.delete(id_bytes)
+            self._records_db.soft_delete(id_bytes)
+            self._records_db["last_deleted_at"] = datetime.now(timezone.utc).isoformat()
             log_info(
                 self.verbose, "Marked {} vectors for soft-deletion in buffer.", len(ids)
             )
             return
 
         self._strategy.soft_delete(id_bytes)
+        self._records_db["last_deleted_at"] = datetime.now(timezone.utc).isoformat()
 
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index.
@@ -309,7 +319,8 @@ class VinkDB:
     def save(self) -> None:
         """Save the index to disk."""
         log_info(self.verbose, "Saving index to {}.", self._dir_path)
-        self._strategy.save(save_path)
+        self._strategy.save()
+        self._records_db["last_saved_at"] = datetime.now(timezone.utc).isoformat()
         log_info(self.verbose, "Index saved successfully.")
 
     def load(self, overwrite: bool = False) -> None:
@@ -320,6 +331,26 @@ class VinkDB:
                 Defaults to False.
         """
         log_info(self.verbose, "Loading index from {}.", self._dir_path)
+
+        if self._strategy is None:
+            params = {
+                "db": self._records_db,
+                "dir_path": self._dir_path if not self._in_memory else None,
+                "dim": self._dim,
+                "in_memory": self._in_memory,
+                "metric": self.metric,
+                "verbose": self.verbose,
+            }
+            if self.strategy == "exact_search":
+                from vink.strategies.exact_search import ExactSearch
+                strategy_class = ExactSearch
+            else:
+                from vink.strategies.approximate_search import ApproximateSearch
+                strategy_class = ApproximateSearch
+                params["ann_config"] = self._ann_config
+
+            self._strategy = strategy_class(**params)
+
         self._strategy.load(overwrite=overwrite)
         log_info(self.verbose, "Index loaded successfully.")
 
@@ -426,7 +457,7 @@ class VinkDB:
         self._ann_building = False
 
         buffer_rows = self._records_db.fetch(
-            where="buffer = TRUE AND deleted = FALSE",
+            where="buffered = TRUE AND deleted = FALSE",
             include_vectors=True,
             params=[],
         )
@@ -437,9 +468,11 @@ class VinkDB:
         records = [
             {
                 "id": row[0],
-                "content": row[1],
-                "metadata": json.loads(row[2]),
                 "embedding": np.frombuffer(row[3], dtype=np.float32),
+
+                # Not used, kept for validation
+                "content": "",
+                "metadata": {},
             }
             for row in buffer_rows
         ]

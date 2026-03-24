@@ -1,8 +1,8 @@
 from pathlib import Path
-from readerwriterlock import rwlock
 from typing import Literal
-
 import numpy as np
+
+from readerwriterlock import rwlock
 
 from vink.filter_parser import FilterToSql
 from vink.sql_wrapper import SQLiteWrapper

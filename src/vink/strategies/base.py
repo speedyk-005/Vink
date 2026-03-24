@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
-
 import numpy as np
 
 from vink.models import VectorRecords

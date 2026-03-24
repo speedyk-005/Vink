@@ -1,21 +1,20 @@
 import os
 from pathlib import Path
+import numpy as np
 from typing import Literal
 
 import larch.pickle as pickle
 import nanopq
-import numpy as np
 import rii
 from loguru import logger
 from readerwriterlock import rwlock
 
-from vink.exceptions import IndexNotFittedError, InvalidInputError
 from vink.filter_parser import FilterToSql
 from vink.models import AnnConfig
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.base import BaseStrategy
 from vink.utils.logging import log_info
-
+from vink.exceptions import IndexNotFittedError, InvalidInputError
 
 class ApproximateSearch(BaseStrategy):
     """
