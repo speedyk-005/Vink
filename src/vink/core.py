@@ -268,6 +268,8 @@ class VinkDB:
             if not self._ann_building and self._should_switch():  
                 self._ann_building = True
                 Thread(target=self._prepare_approx_strategy, daemon=True).start()
+        else:
+            assigned_ids = self._strategy.add(records)
 
         log_info(
             self.verbose, "Successfully added {} records to index.", len(assigned_ids)
