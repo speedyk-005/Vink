@@ -54,7 +54,7 @@ class ExactSearch(BaseStrategy):
 
         self._all_vectors: list[np.ndarray] = []
         self._all_ids: list[bytes] = []
-        self._id_to_idx: dict[bytes, int] = {}  # Fast O(1) lookup for deletion
+        self._id_to_idx: dict[bytes, int] = {}
 
         # Boolean mask for active/deleted status
         self._mask: list[bool] = []
