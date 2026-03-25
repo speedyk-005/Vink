@@ -1,10 +1,10 @@
-class VinkError(Exception):
+class VinkDBError(Exception):
     """Base exception for all Vink errors."""
 
     pass
 
 
-class InvalidInputError(VinkError):
+class InvalidInputError(VinkDBError):
     """Raised when one or multiple invalid input(s) are encountered."""
 
     pass
@@ -30,5 +30,11 @@ class IndexNotFittedError(Exception):
 
 class FilterError(InvalidInputError):
     """Raised when a filter expression fails to parse."""
+
+    pass
+
+
+class DatabaseCorruptedError(VinkDBError):
+    """Raised when database files are corrupted."""
 
     pass
