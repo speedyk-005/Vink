@@ -474,7 +474,7 @@ class ApproximateSearch(BaseStrategy):
 
         # If OPQ is active, the query must be rotated into the same
         # optimized subspace used during the training phase.
-        if self.metric == "opq":
+        if self._ann_config.quantizer == "opq":
             query_vec = self.index.fine_quantizer.rotate(query_vec)
 
         indices, top_scores = self.index.query(
