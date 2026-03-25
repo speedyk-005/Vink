@@ -75,7 +75,7 @@ class FilterToSql:
 
             field = sequence[0]    
             if field == "content":
-                field = "content_fts MATCH "
+                field = "content_fts5"
             else:
                 field = f"metadata ->> '{field}'"
 
@@ -162,7 +162,8 @@ class FilterToSql:
         except ValueError:
              return val
 
-if __name__ == "__main__":
+
+if __name__ == "__main__":  # pragma: no cover
     trans = FilterToSql()
 
     filters = [

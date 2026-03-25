@@ -10,6 +10,7 @@ def translator():
 
 
 @pytest.mark.parametrize("filter_expr,expected_keys,expected_param", [
+    ("content == 'python'", ("content_fts5", "="), "python"),
     ("category == 'tech'", ("category", "="), "tech"),
     ("price >= 10", ("price", ">="), 10),
     ("rating > 4.5", ("rating", ">"), 4.5),
