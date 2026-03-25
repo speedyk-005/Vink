@@ -5,14 +5,15 @@ This script demonstrates the automatic and early switch from exact search to
 approximate search (ANN), accounting for training time overhead.
 """
 
-import time
-import random
-import timeit
 import textwrap
+import time
+import timeit
+
 import numpy as np
 from rich.console import Console
 from rich.table import Table
-from vink import VinkDB, AnnConfig
+
+from vink import AnnConfig, VinkDB
 
 console = Console()
 
@@ -79,20 +80,17 @@ def demonstrate_automatic_switch():
                 db.search(q, top_k=5)
             search_time = timeit.default_timer() - start_search
             avg_query_ms = (search_time / len(query_vectors)) * 1000
-        except Exception as e:
+        except Exception:
             avg_query_ms = 0.0
 
         # Status indicator
         if db._ann_building:
             status = "⚙ Building ANN"
-            style = "yellow"
         elif strategy == "approximate_search":
             status = "✓ ANN Active"
-            style = "green"
             ann_switched = True
         else:
             status = "Exact Search"
-            style = "yellow"
 
         table.add_row(
             f"{count:,}",

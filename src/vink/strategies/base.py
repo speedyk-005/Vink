@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
+
 import numpy as np
 
 from vink.models import VectorRecords
@@ -148,7 +149,7 @@ class BaseStrategy(ABC):
                 and optionally embedding.
         """
         results = []
-        for id_bytes, score in zip(ids, scores):
+        for id_bytes, score in zip(ids, scores, strict=True):
             row = id_to_row[id_bytes]
 
             result = {

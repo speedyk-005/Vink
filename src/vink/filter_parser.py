@@ -16,7 +16,7 @@ class FilterToSql:
              - boolean values: True or False
 
     Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`
- 
+
     Examples:
         category == 'science'
         price >= 10
@@ -34,9 +34,9 @@ class FilterToSql:
                 r"(?:\d*\.\d+|\d+\.\d*)(?:[eE][-+]?\d+)?|" # Decimals with optional exponent
                 r"\d+[eE][-+]?\d+"                   # Integers with mandatory exponent (e.g. 1e3)
             r")"
-            r"(?![\w\.])"                       # Prevents letters, underscore, or dot right after 
+            r"(?![\w\.])"                       # Prevents letters, underscore, or dot right after
         r")|"
-        
+
         # Int (e.g., 123, -42, +7)
         r"(?:[-+]?\d+(?![\w\.]))"
     )
@@ -47,14 +47,14 @@ class FilterToSql:
         ((r_ops,), "comparison operator (==, !=, >=, <=, >, <)"),
         ((r_string, r_num, r_bool_val), "quoted string, number or a titled boolean value"),
      ]
-   
+
     def translate(self, filters: list[str]) -> tuple[str, list]:
         """
         Convert a list of filter strings into a safe SQLite query.
 
         Args:
             filters (list[str]): List of filter strings.
- 
+
         Returns:
             tuple[str, list]: A tuple containing:
                 - query (str): The generated SQLite condition clause.
@@ -62,10 +62,10 @@ class FilterToSql:
         """
         all_conditions = []
         query_params = []
- 
+
         for idx, line in enumerate(filters):
             res = self._parse_expression(line)
-                       
+
             if not res["success"]:
                 raise FilterError(
                     f"error at index {idx}, col {res['col']}, found: {res['found']}, expecting: {res['expect']}"
@@ -73,7 +73,7 @@ class FilterToSql:
 
             sequence = res['sequence']
 
-            field = sequence[0]    
+            field = sequence[0]
             if field == "content":
                 field = "content_fts5"
             else:
@@ -88,7 +88,7 @@ class FilterToSql:
             else:
                 literal = self._cast_value(sequence[2])
             query_params.append(literal)
-            
+
         if not all_conditions:
             return "", []
 
@@ -109,7 +109,7 @@ class FilterToSql:
         for pat, expect in self.START:
             has_match = False
             for alt in pat:
-                # Handle whitespace  
+                # Handle whitespace
                 num_spaces = len(curr_substring) - len(curr_substring.lstrip())
                 curr_col += num_spaces
                 curr_substring = curr_substring[num_spaces:]
@@ -134,7 +134,7 @@ class FilterToSql:
                 break
 
             if not has_match:
-                found = curr_substring.split()[0] 
+                found = curr_substring.split()[0]
                 return {
                     "success": False,
                     "expect": expect,

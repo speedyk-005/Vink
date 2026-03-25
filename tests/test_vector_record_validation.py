@@ -1,5 +1,5 @@
-import pytest
 import numpy as np
+import pytest
 
 from vink import VinkDB
 from vink.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError

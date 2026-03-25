@@ -1,16 +1,13 @@
-import pytest
-import time
 from pathlib import Path
-import numpy as np
 
 import larch.pickle as pickle
+import numpy as np
+import pytest
 
-from vink import VinkDB
 from vink.models import AnnConfig, VectorRecords
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.approximate_search import ApproximateSearch
 from vink.utils.id_generation import generate_id_bytes
-
 
 DB_PATH = "records.sqlite"
 
@@ -78,14 +75,14 @@ def test_crash_during_temp_file_save(approx_search_strategy):
 
     # Corrupt the .wal file (simulate power cut during temp file write)
     approx_search_strategy._ann_index_wal_path.write_bytes(b"corrupted")
-    
+
     # Close the fixture's connection to release lock
     approx_search_strategy.db.close()
-    
+
     # Load should fall back to old ann_index.pkl (N=10)
     strategy = _create_bare_approx_strategy(db_path)
     strategy.load(overwrite=True)
-    
+
     assert strategy.index.N == 10, f"Expected N=10 but got {strategy.index.N}"
     assert strategy.db.count("active") == 10, f"Expected count=10 but got {strategy.db.count('active')}"
 
@@ -100,14 +97,14 @@ def test_crash_before_db_commit(approx_search_strategy):
 
     # Skip the commit
     # approx_search_strategy.db.commit()
-    
+
     # Close the fixture's connection to release lock
     approx_search_strategy.db.close()
-    
+
     # Load should fall back to old ann_index.pkl (N=10)
     strategy = _create_bare_approx_strategy(db_path)
     strategy.load(overwrite=True)
-    
+
     assert strategy.index.N == 10, f"Expected N=10 but got {strategy.index.N}"
     assert strategy.db.count("active") == 10, f"Expected count=10 but got {strategy.db.count('active')}"
 
@@ -121,13 +118,13 @@ def test_power_cut_after_commit_before_swap(approx_search_strategy):
         pickle.dump(approx_search_strategy.index, f, protocol=5)
 
     approx_search_strategy.db.commit()
-    
+
     # Close the fixture's connection to release lock
     approx_search_strategy.db.close()
-    
+
     # Load should recover N=20, count=20
     strategy = _create_bare_approx_strategy(db_path)
     strategy.load(overwrite=True)
-    
+
     assert strategy.index.N == 20, f"Expected N=29 but got {strategy.index.N}"
     assert strategy.db.count("active") == 20, f"Expected count=20 but got {strategy.db.count('active')}"

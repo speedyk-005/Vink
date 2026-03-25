@@ -1,29 +1,28 @@
-import json
-import math
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-import numpy as np
 from threading import Thread
 from typing import Callable, Literal
 
-from readerwriterlock import rwlock
+import numpy as np
 import regex as re
 from pydantic import ValidationError
+from readerwriterlock import rwlock
+
+from vink.exceptions import InvalidInputError, VectorDimensionError
+from vink.models import AnnConfig, VectorRecords
+from vink.sql_wrapper import SQLiteWrapper
 
 # The strategies are lazy imported
-
 from vink.strategies.base import BaseStrategy
-from vink.sql_wrapper import SQLiteWrapper
 from vink.utils.input_validation import (
     pretty_errors,
     validate_arguments,
     validate_embedding,
     validate_id,
 )
-from vink.utils.logging import log_info
-from vink.models import AnnConfig, VectorRecords
-from vink.exceptions import InvalidInputError, VectorDimensionError
+from vink.utils.logging import log_info, logger
+
 
 class VinkDB:
     """
@@ -167,23 +166,24 @@ class VinkDB:
         parts = re.split(r"(?<!^)(?=\p{LU})", strategy_name)
         return "_".join([p.lower() for p in parts])
 
-    def count(self, mode: Literal["active", "deleted", "all"] = "active") -> int:
+    def count(self, status: Literal["active", "deleted"] | None = None) -> int:
         """Count vectors in the database.
 
         Args:
-            mode (Literal["active", "deleted", "all"]): Which vectors to count - "active", "deleted", or "all". Defaults to "active".
+            status (Literal["active", "deleted"], optional): Which vectors to count.
+                Count all if not provided.
 
         Returns:
             int: Count of vectors.
         """
-        return self._records_db.count(mode)
+        return self._records_db.count(status)
 
     def stats(self) -> dict:  # pragma: no cover
         """Return database statistics and metadata.
 
         Returns:
             dict: Database metadata including version, dimension, metric, strategy,
-                last_saved_at, last_deleted_at, active_count, deleted_count, 
+                last_saved_at, last_deleted_at, active_count, deleted_count,
                 and other stored metadata.
         """
         return {
@@ -214,16 +214,14 @@ class VinkDB:
                         f"Embedding callback output dimension ({validated_vec.shape[-1]}) "
                         f"does not match VinkDB dimension ({self._dim})."
                     )
-            except VectorDimensionError:
-                # Let this specific error bubble up for the test/user
+            except (VectorDimensionError, InvalidInputError):
+                # Let these specific errors bubble up for the test/user
                 raise
             except Exception as e:
-                raise InvalidInputError(
-                    f"Embedding callback crashed during handshake: {e}"
-                )
+                raise InvalidInputError("Embedding callback crashed during handshake") from e
 
         if not self._force_exact:
-            self._ann_config.validate_dim(self._dim)
+            self._ann_config.validate_vector_dim(self._dim)
 
     @validate_arguments
     def add(self, vector_records: list[dict]) -> list[str]:
@@ -275,7 +273,7 @@ class VinkDB:
             assigned_ids = self._strategy.add(records)
 
             # Check if switch should be triggered based on new count
-            if not self._ann_building and self._should_switch():  
+            if not self._ann_building and self._should_switch():
                 self._ann_building = True
                 Thread(target=self._prepare_approx_strategy, daemon=True).start()
         else:
@@ -396,9 +394,9 @@ class VinkDB:
             self.strategy,
         )
 
-        query = validate_embedding(query_vec, metric=self._metric)
+        validated_query = validate_embedding(query_vec, metric=self._metric)
         results = self._strategy.search(
-            query_vec, top_k=top_k, include_vectors=include_vectors, filters=filters
+            validated_query, top_k=top_k, include_vectors=include_vectors, filters=filters
         )
 
         log_info(self.verbose, "Found {} results for query.", len(results))
@@ -408,10 +406,10 @@ class VinkDB:
         """
         Check if ANN switch should be triggered based on dual conditions:
         1. Sufficiency: num_vectors >= min_required (num_subspaces * codebook_size)
-        2. Complexity: Normalized power-law (dim * num_vectors / 1M) ^ switch_exp >= 1.0
+        2. Complexity: (1M / num_vectors) ^ switch_exp < 1.0 triggers switch
 
-        Returns:
-            bool: True if conditions met to switch to ANN, False otherwise.
+        Higher switch_exp values stay exact longer. The sweet spot is 1M elements
+        regardless of dimension (normalized to 1.0 at 1M).
         """
         if self._force_exact:
             return False
@@ -426,11 +424,9 @@ class VinkDB:
         if n_vecs < min_required:
             return False
 
-        total_ops = self._dim * n_vecs
-        threshold_ops = 1_000_000
-
-        complexity = (total_ops / threshold_ops) ** cfg.switch_exp
-        return complexity >= 1.0
+        threshold = 1_000_000  # Sweet spot at 1M elements (normalized regardless of dimension)
+        complexity = (threshold / n_vecs) ** cfg.switch_exp
+        return complexity < 1.0
 
     def _prepare_approx_strategy(self) -> None:
         """

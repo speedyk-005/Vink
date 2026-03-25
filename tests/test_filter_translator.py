@@ -1,7 +1,7 @@
 import pytest
 
-from vink.filter_parser import FilterToSql
 from vink.exceptions import FilterError
+from vink.filter_parser import FilterToSql
 
 
 @pytest.fixture(scope="module")
