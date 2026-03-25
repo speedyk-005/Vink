@@ -1,6 +1,5 @@
 import pytest
 import time
-import tempfile
 import numpy as np
 from pathlib import Path
 import pysqlite3 as sqlite3
@@ -157,48 +156,48 @@ def test_compact(approx_search_strategy):
     assert deleted_count == 0, "All soft-deleted records should be hard-deleted from SQLite"
 
 
-def test_save_load(sample_embeddings):
+def test_save_load(sample_embeddings, tmp_path):
     """Test that save persists index and load restores it correctly."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        db = SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={})
-        config = AnnConfig(num_subspaces=4, codebook_size=8)
-        strategy = ApproximateSearch(
-            db=db,
-            dir_path=tmp_path,
-            dim=128,
-            in_memory=False,
-            metric="euclidean",
-            verbose=False,
-            ann_config=config,
-        )
+    tmp_path = Path(tmp_path)
 
-        rng = np.random.default_rng(seed=42)
-        vectors = rng.standard_normal((10, 128), dtype=np.float32)
+    db = SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={})
+    config = AnnConfig(num_subspaces=4, codebook_size=8)
+    strategy = ApproximateSearch(
+        db=db,
+        dir_path=tmp_path,
+        dim=128,
+        in_memory=False,
+        metric="euclidean",
+        verbose=False,
+        ann_config=config,
+    )
 
-        ids = [generate_id_bytes() for _ in range(10)]
-        strategy.fit(vectors, np.array(ids, dtype="S16"))
+    rng = np.random.default_rng(seed=42)
+    vectors = rng.standard_normal((10, 128), dtype=np.float32)
 
-        records = [
-            {"id": id, "content": f"content {i}", "metadata": {"i": i}, "embedding": vec}
-            for i, (id, vec) in enumerate(zip(ids, vectors))
-        ]
-        strategy.db.insert(VectorRecords(dim=128, metric="euclidean", records=records))
-        strategy.save()
+    ids = [generate_id_bytes() for _ in range(10)]
+    strategy.fit(vectors, np.array(ids, dtype="S16"))
 
-        assert (tmp_path / "ann_index.pkl").exists(), "Index file should exist"
+    records = [
+        {"id": id, "content": f"content {i}", "metadata": {"i": i}, "embedding": vec}
+        for i, (id, vec) in enumerate(zip(ids, vectors))
+    ]
+    strategy.db.insert(VectorRecords(dim=128, metric="euclidean", records=records))
+    strategy.save()
 
-        strategy2 = ApproximateSearch(
-            db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={}),
-            dir_path=tmp_path,
-            dim=128,
-            in_memory=False,
-            metric="euclidean",
-            verbose=True,
-            ann_config=config,
-        )
-        strategy2.load(overwrite=True)
+    assert (tmp_path / "ann_index.pkl").exists(), "Index file should exist"
 
-        assert strategy2.index is not None, "Index should be loaded"
-        assert strategy2.index.N == 10, f"Expected 10 vectors, got {strategy2.index.N}"
-        assert len(strategy2.all_ids) == 10, f"Expected 10 IDs, got {len(strategy2.all_ids)}"
+    strategy2 = ApproximateSearch(
+        db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={}),
+        dir_path=tmp_path,
+        dim=128,
+        in_memory=False,
+        metric="euclidean",
+        verbose=True,
+        ann_config=config,
+    )
+    strategy2.load(overwrite=True)
+
+    assert strategy2.index is not None, "Index should be loaded"
+    assert strategy2.index.N == 10, f"Expected 10 vectors, got {strategy2.index.N}"
+    assert len(strategy2.all_ids) == 10, f"Expected 10 IDs, got {len(strategy2.all_ids)}"

@@ -14,7 +14,7 @@ from vink.models import AnnConfig
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.base import BaseStrategy
 from vink.utils.logging import log_info
-from vink.exceptions import IndexNotFittedError, InvalidInputError
+from vink.exceptions import DatabaseCorruptedError, IndexNotFittedError, InvalidInputError
 
 class ApproximateSearch(BaseStrategy):
     """
@@ -66,12 +66,13 @@ class ApproximateSearch(BaseStrategy):
         )
         self.metric = self.NANOPQ_METRIC_MAP[metric]
 
+
         self._rwlock = rwlock.RWLockFair()
         self._filter_to_sql = FilterToSql()
-
-        self.index: rii.Rii | None = None
         self._delta_since_reconfig = 0
         self._ann_config = ann_config
+
+        self.index: rii.Rii | None = None
 
         self.all_ids: list[bytes] = []
         self.id_to_idx: dict[bytes, int] = {}
@@ -232,7 +233,6 @@ class ApproximateSearch(BaseStrategy):
         self.index.add(np.vstack(embeddings))
         if not is_buffer:
             self.db.insert(vector_records)
-            self.db.commit()
 
         self._delta_since_reconfig += len(vector_records.records)
         if self._delta_since_reconfig >= self.reconfig_threshold:
@@ -259,7 +259,6 @@ class ApproximateSearch(BaseStrategy):
                     self.mask[idx] = False
 
             self.db.soft_delete(ids)
-            self.db.commit()
 
             # Invalidate cache
             self.active_ids_arr = None
@@ -412,7 +411,7 @@ class ApproximateSearch(BaseStrategy):
 
             self.index = index
 
-        except (pickle.UnpicklingError, EOFError, AttributeError, AssertionError):
+        except (pickle.UnpicklingError, EOFError, AttributeError, AssertionError) as e:
             # Recover from partial save
             log_info(self.verbose, "Partial save detected... Recovering from backup file")
 
@@ -433,14 +432,12 @@ class ApproximateSearch(BaseStrategy):
                     os.close(dir_fd)
 
             # Rare cases
-            except FileNotFoundError:
-                logger.error("Backup file is not found.")
-                raise
+            except FileNotFoundError as e:
+                raise DatabaseCorruptedError("Index recovery failed - backup file not found") from e
 
-            except (pickle.UnpicklingError, EOFError, AttributeError):
-                logger.error("Backup file is corrupted.")
+            except (pickle.UnpicklingError, EOFError, AttributeError, AssertionError) as e:
                 self._ann_index_wal_path.unlink()  # Clean up the broken file
-                raise
+                raise DatabaseCorruptedError("Index recovery failed - both index and backup files are corrupted") from e
 
     def _query_index(
         self,

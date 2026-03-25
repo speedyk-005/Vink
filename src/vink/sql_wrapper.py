@@ -50,6 +50,10 @@ class SQLiteWrapper:
         """Expose the raw connection"""
         return self._conn
 
+    def close(self) -> None:
+        """Close the database connection."""
+        self._conn.close()
+
     def _ensure_tables_exist(self) -> None:
         cursor = self._conn.cursor()
         cursor.execute(

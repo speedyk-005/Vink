@@ -1,6 +1,5 @@
 import pytest
 import time
-import tempfile
 import numpy as np
 from pathlib import Path
 import pysqlite3 as sqlite3
@@ -137,40 +136,40 @@ def test_compact(exact_search_strategy):
     assert deleted_count == 0, "All soft-deleted records should be hard-deleted from SQLite"
 
 
-def test_save_load(sample_embeddings):
+def test_save_load(sample_embeddings, tmp_path):
     """Test that save persists data and load restores it correctly."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        db = SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={})
-        strategy = ExactSearch(
-            db=db,
-            dir_path=tmp_path,
-            dim=128,
-            in_memory=False,
-            metric="euclidean",
-            verbose=False,
-        )
+    tmp_path = Path(tmp_path)
 
-        records = [
-            {"content": f"content {i}", "metadata": {"i": i}, "embedding": sample_embeddings}
-            for i in range(3)
-        ]
-        original_ids = strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
+    db = SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={})
+    strategy = ExactSearch(
+        db=db,
+        dir_path=tmp_path,
+        dim=128,
+        in_memory=False,
+        metric="euclidean",
+        verbose=False,
+    )
 
-        strategy.save()
+    records = [
+        {"content": f"content {i}", "metadata": {"i": i}, "embedding": sample_embeddings}
+        for i in range(3)
+    ]
+    original_ids = strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
 
-        strategy2 = ExactSearch(
-            db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={}),
-            dir_path=tmp_path,
-            dim=128,
-            in_memory=False,
-            metric="euclidean",
-            verbose=False,
-        )
-        strategy2.load(overwrite=True)
+    strategy.save()
 
-        assert len(strategy2.all_ids) == 3, f"Expected 3 IDs, got {len(strategy2.all_ids)}"
-        assert len(strategy2.all_vectors) == 3, f"Expected 3 vectors, got {len(strategy2.all_vectors)}"
-        assert len(strategy2.id_to_idx) == 3, f"Expected 3 id_to_idx entries, got {len(strategy2.id_to_idx)}"
-        new_ids = [strategy2._bytes_to_uuid_str(id_bytes) for id_bytes in strategy2.all_ids]
-        assert set(new_ids) == set(original_ids), "Loaded IDs don't match original IDs"
+    strategy2 = ExactSearch(
+        db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={}),
+        dir_path=tmp_path,
+        dim=128,
+        in_memory=False,
+        metric="euclidean",
+        verbose=False,
+    )
+    strategy2.load(overwrite=True)
+
+    assert len(strategy2.all_ids) == 3, f"Expected 3 IDs, got {len(strategy2.all_ids)}"
+    assert len(strategy2.all_vectors) == 3, f"Expected 3 vectors, got {len(strategy2.all_vectors)}"
+    assert len(strategy2.id_to_idx) == 3, f"Expected 3 id_to_idx entries, got {len(strategy2.id_to_idx)}"
+    new_ids = [strategy2._bytes_to_uuid_str(id_bytes) for id_bytes in strategy2.all_ids]
+    assert set(new_ids) == set(original_ids), "Loaded IDs don't match original IDs"
