@@ -74,11 +74,11 @@ class ApproximateSearch(BaseStrategy):
 
         self.index: rii.Rii | None = None
 
-        self.all_ids: list[bytes] = []
-        self.id_to_idx: dict[bytes, int] = {}
+        self._all_ids: list[bytes] = []
+        self._id_to_idx: dict[bytes, int] = {}
 
         # Boolean mask for active/deleted status
-        self.mask: np.ndarray = np.array([], dtype=bool)
+        self._mask: list[bool] = []
 
         # Cache placeholder
         self.active_ids_arr = None
@@ -119,11 +119,11 @@ class ApproximateSearch(BaseStrategy):
             )
 
         self.active_ids_arr = active_ids_arr
-        self.all_ids = list(active_ids_arr)
-        self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
+        self._all_ids = list(active_ids_arr)
+        self._id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)}
 
         # Initialize mask - all True since these are active
-        self.mask = np.ones(len(self.all_ids), dtype=bool)
+        self._mask = [True] * len(self._all_ids)
 
         self.reconfig_threshold = self._ann_config.reconfig_threshold
 
@@ -195,13 +195,13 @@ class ApproximateSearch(BaseStrategy):
             return
 
         # Caller holds the lock; no nested lock acquisition.
-        active_indices = self.mask.nonzero()[0]
+        active_indices = [i for i, m in enumerate(self._mask) if m]
 
         if len(active_indices) == 0:
             self.active_ids_arr = np.empty((0,), dtype="S16")
             return
 
-        self.active_ids_arr = np.array(self.all_ids, dtype="S16")[active_indices]
+        self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
 
     def add(self, vector_records, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
@@ -222,10 +222,10 @@ class ApproximateSearch(BaseStrategy):
             embeddings = []
 
             for record in vector_records.records:
-                idx = len(self.all_ids)
-                self.all_ids.append(record.id)
-                self.id_to_idx[record.id] = idx
-                self.mask = np.append(self.mask, True)
+                idx = len(self._all_ids)
+                self._all_ids.append(record.id)
+                self._id_to_idx[record.id] = idx
+                self._mask.append(True)
                 self.active_ids_arr = None
                 embeddings.append(record.embedding)
                 assigned_ids.append(self._bytes_to_uuid_str(record.id))
@@ -254,9 +254,9 @@ class ApproximateSearch(BaseStrategy):
 
         with self._rwlock.gen_wlock():
             for id_bytes in ids:
-                idx = self.id_to_idx.get(id_bytes)
+                idx = self._id_to_idx.get(id_bytes)
                 if idx is not None:
-                    self.mask[idx] = False
+                    self._mask[idx] = False
 
             self.db.soft_delete(ids)
 
@@ -297,9 +297,9 @@ class ApproximateSearch(BaseStrategy):
                     params=params,
                 )
                 match_set = {row[0] for row in rows}
-                temp_mask = np.array([uid in match_set for uid in self.active_ids_arr])
+                filtered_mask = np.array([uid in match_set for uid in self.active_ids_arr])
 
-                filtered_ids = self.active_ids_arr[temp_mask]
+                filtered_ids = self.active_ids_arr[filtered_mask]
             else:
                 # Use cached versions
                 filtered_ids = self.active_ids_arr
@@ -320,7 +320,7 @@ class ApproximateSearch(BaseStrategy):
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
         with self._rwlock.gen_wlock():
-            active_indices = self.mask.nonzero()[0]
+            active_indices = [i for i, m in enumerate(self._mask) if m]
             if len(active_indices) <= self._ann_config.codebook_size:
                 logger.warning(
                     "Skipping ANN index rebuild: only {} active vectors, "
@@ -332,10 +332,10 @@ class ApproximateSearch(BaseStrategy):
 
             self.db.compact()
 
-            self.active_ids_arr = np.array(self.all_ids, dtype="S16")[active_indices]
-            self.all_ids = self.active_ids_arr.tolist()
-            self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
-            self.mask = np.ones(len(self.all_ids), dtype=bool)
+            self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
+            self._all_ids = self.active_ids_arr.tolist()
+            self._id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)}
+            self._mask = [True] * len(self._all_ids)
 
             gen = self.db.iter_embeddings()
             first_batch = next(gen, None)
@@ -382,7 +382,7 @@ class ApproximateSearch(BaseStrategy):
             log_info(self.verbose, "No ANN index file found, skipping index load.")
             return
 
-        if not overwrite and self.all_ids:
+        if not overwrite and self._all_ids:
             log_info(self.verbose, "Index already loaded, skipping.")
             return
 
@@ -393,9 +393,9 @@ class ApproximateSearch(BaseStrategy):
             cursor = self.db.conn.execute("SELECT id, deleted FROM vec_records")
             rows = cursor.fetchall()
 
-            self.all_ids = [row[0] for row in rows]
-            self.mask = np.array([row[1] for row in rows], dtype=bool)
-            self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
+            self._all_ids = [row[0] for row in rows]
+            self._mask = [bool(row[1]) for row in rows]
+            self._id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)}
 
             self._safe_load_ann_index()
 
@@ -408,7 +408,7 @@ class ApproximateSearch(BaseStrategy):
             with open(self._ann_index_path, "rb") as f:
                 index = pickle.load(f)
 
-            assert len(self.all_ids) == index.N
+            assert len(self._all_ids) == index.N
 
             self.index = index
 
@@ -420,7 +420,7 @@ class ApproximateSearch(BaseStrategy):
                 with open(self._ann_index_wal_path, "rb") as f:
                     temp_index = pickle.load(f)
 
-                assert len(self.all_ids) == temp_index.N
+                assert len(self._all_ids) == temp_index.N
 
                 self.index = temp_index
                 self._ann_index_wal_path.replace(self._ann_index_path)
@@ -463,7 +463,7 @@ class ApproximateSearch(BaseStrategy):
             query_vec = query_vec.flatten()
 
         # Map application IDs to internal index offsets
-        target_indices = np.array([self.id_to_idx[uid] for uid in ids if uid in self.id_to_idx])
+        target_indices = np.array([self._id_to_idx[uid] for uid in ids if uid in self._id_to_idx])
 
         if len(target_indices) == 0:
             return [], np.array([])
@@ -478,6 +478,6 @@ class ApproximateSearch(BaseStrategy):
             topk=top_k,  # rii index uses topk instead of top_k
             target_ids=target_indices,
         )
-        top_ids = [self.all_ids[i] for i in indices]
+        top_ids = [self._all_ids[i] for i in indices]
 
         return top_ids, top_scores

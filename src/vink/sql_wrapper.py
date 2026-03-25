@@ -168,19 +168,20 @@ class SQLiteWrapper:
         return cursor.fetchall()
 
     @validate_arguments
-    def count(self, mode: Literal["active", "deleted", "all"]) -> int:
+    def count(self, status: Literal["active", "deleted"] | None = None) -> int:
         """Count vectors in the database.
 
         Args:
-            mode (Literal["active", "deleted", "all"]): Which vectors to count - "active", "deleted", or "all".
+            status (Literal["active", "deleted"], optional): Which vectors to count.
+                Count all if not provided.
 
         Returns:
             int: Count of vectors.
         """
         cursor = self._conn.cursor()
-        if mode == "active":
+        if status == "active":
             cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = FALSE")
-        elif mode == "deleted":
+        elif status == "deleted":
             cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = TRUE")
         else:
             cursor.execute("SELECT COUNT(*) FROM vec_records")

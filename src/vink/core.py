@@ -167,16 +167,17 @@ class VinkDB:
         parts = re.split(r"(?<!^)(?=\p{LU})", strategy_name)
         return "_".join([p.lower() for p in parts])
 
-    def count(self, mode: Literal["active", "deleted", "all"] = "active") -> int:
+    def count(self, status: Literal["active", "deleted"] | None = None) -> int:
         """Count vectors in the database.
 
         Args:
-            mode (Literal["active", "deleted", "all"]): Which vectors to count - "active", "deleted", or "all". Defaults to "active".
+            status (Literal["active", "deleted"], optional): Which vectors to count.
+                Count all if not provided.
 
         Returns:
             int: Count of vectors.
         """
-        return self._records_db.count(mode)
+        return self._records_db.count(status)
 
     def stats(self) -> dict:  # pragma: no cover
         """Return database statistics and metadata.
@@ -223,7 +224,7 @@ class VinkDB:
                 )
 
         if not self._force_exact:
-            self._ann_config.validate_dim(self._dim)
+            self._ann_config.validate_vector_dim(self._dim)
 
     @validate_arguments
     def add(self, vector_records: list[dict]) -> list[str]:

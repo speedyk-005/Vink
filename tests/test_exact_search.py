@@ -56,9 +56,9 @@ def test_add(exact_search_strategy, sample_embeddings):
     ]
     ids = exact_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
 
-    n_ids = len(exact_search_strategy.all_ids)
-    n_vecs = len(exact_search_strategy.all_vectors)
-    n_map = len(exact_search_strategy.id_to_idx)
+    n_ids = len(exact_search_strategy._all_ids)
+    n_vecs = len(exact_search_strategy._all_vectors)
+    n_map = len(exact_search_strategy._id_to_idx)
     expected = 4
 
     assert n_ids == n_vecs == n_map == expected, (
@@ -78,7 +78,7 @@ def test_soft_delete(exact_search_strategy):
 
     n_ids = len(exact_search_strategy.active_ids_arr)
     n_vecs = len(exact_search_strategy.active_vectors_arr)
-    n_mask = sum(exact_search_strategy.mask)
+    n_mask = sum(exact_search_strategy._mask)
     expected = 2
 
     assert n_ids == n_vecs == n_mask == expected, (
@@ -123,14 +123,14 @@ def test_search(exact_search_strategy, sample_records):
 
 def test_compact(exact_search_strategy):
     """Test that compact hard-deletes soft-deleted records and rebuilds in-memory structures."""
-    ids_before = len(exact_search_strategy.all_ids)
+    ids_before = len(exact_search_strategy._all_ids)
 
     exact_search_strategy.compact()
     time.sleep(0.2)
 
-    assert len(exact_search_strategy.all_ids) == ids_before - len(IDS_TO_DELETE), "all_ids should be slimmed by deleted count"
-    assert len(exact_search_strategy.mask) == len(exact_search_strategy.all_ids), "mask length should match all_ids"
-    assert all(exact_search_strategy.mask), "All entries in mask should be True"
+    assert len(exact_search_strategy._all_ids) == ids_before - len(IDS_TO_DELETE), "all_ids should be slimmed by deleted count"
+    assert len(exact_search_strategy._mask) == len(exact_search_strategy._all_ids), "mask length should match all_ids"
+    assert all(exact_search_strategy._mask), "All entries in mask should be True"
 
     deleted_count = exact_search_strategy.db.count("deleted")
     assert deleted_count == 0, "All soft-deleted records should be hard-deleted from SQLite"
@@ -168,8 +168,8 @@ def test_save_load(sample_embeddings, tmp_path):
     )
     strategy2.load(overwrite=True)
 
-    assert len(strategy2.all_ids) == 3, f"Expected 3 IDs, got {len(strategy2.all_ids)}"
-    assert len(strategy2.all_vectors) == 3, f"Expected 3 vectors, got {len(strategy2.all_vectors)}"
-    assert len(strategy2.id_to_idx) == 3, f"Expected 3 id_to_idx entries, got {len(strategy2.id_to_idx)}"
-    new_ids = [strategy2._bytes_to_uuid_str(id_bytes) for id_bytes in strategy2.all_ids]
+    assert len(strategy2._all_ids) == 3, f"Expected 3 IDs, got {len(strategy2._all_ids)}"
+    assert len(strategy2._all_vectors) == 3, f"Expected 3 vectors, got {len(strategy2._all_vectors)}"
+    assert len(strategy2._id_to_idx) == 3, f"Expected 3 id_to_idx entries, got {len(strategy2._id_to_idx)}"
+    new_ids = [strategy2._bytes_to_uuid_str(id_bytes) for id_bytes in strategy2._all_ids]
     assert set(new_ids) == set(original_ids), "Loaded IDs don't match original IDs"

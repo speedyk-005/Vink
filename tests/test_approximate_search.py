@@ -71,8 +71,8 @@ def test_add(approx_search_strategy, sample_embeddings):
     ]
     ids = approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
 
-    n_ids = len(approx_search_strategy.all_ids)
-    n_map = len(approx_search_strategy.id_to_idx)
+    n_ids = len(approx_search_strategy._all_ids)
+    n_map = len(approx_search_strategy._id_to_idx)
 
     # Including the ones added in the fitting process in the strategy fixture
     expected = 2 + 10
@@ -92,7 +92,7 @@ def test_soft_delete(approx_search_strategy):
     approx_search_strategy._ensure_cache()
 
     n_ids = len(approx_search_strategy.active_ids_arr)
-    n_mask = sum(approx_search_strategy.mask)
+    n_mask = sum(approx_search_strategy._mask)
     expected = 2  # the two ones added in the test above
 
     assert n_ids == n_mask == expected, (
@@ -200,4 +200,4 @@ def test_save_load(sample_embeddings, tmp_path):
 
     assert strategy2.index is not None, "Index should be loaded"
     assert strategy2.index.N == 10, f"Expected 10 vectors, got {strategy2.index.N}"
-    assert len(strategy2.all_ids) == 10, f"Expected 10 IDs, got {len(strategy2.all_ids)}"
+    assert len(strategy2._all_ids) == 10, f"Expected 10 IDs, got {len(strategy2._all_ids)}"

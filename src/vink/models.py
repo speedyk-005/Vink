@@ -33,7 +33,7 @@ class AnnConfig(BaseModel):
         description="Number of inserts before reconfiguring the index to maintain search performance.",
     )
 
-    def validate_dim(self, dim: int) -> None:
+    def validate_vector_dim(self, dim: int) -> None:
         """Validate ANN config against a specific vector dimension."""
         if self.num_subspaces > dim:
             raise VectorDimensionError(
