@@ -1,7 +1,7 @@
 import json
 import sqlite3
-from typing import Generator, Literal
 from importlib.metadata import PackageNotFoundError, version
+from typing import Generator, Literal
 
 from vink.models import VectorRecords
 from vink.utils.input_validation import validate_arguments

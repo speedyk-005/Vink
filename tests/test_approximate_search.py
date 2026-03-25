@@ -1,14 +1,13 @@
-import pytest
 import time
-import numpy as np
 from pathlib import Path
-import pysqlite3 as sqlite3
+
+import numpy as np
+import pytest
 
 from vink.models import AnnConfig, VectorRecords
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.approximate_search import ApproximateSearch
 from vink.utils.id_generation import generate_id_bytes
-
 
 IDS_TO_DELETE = []
 
@@ -43,7 +42,7 @@ def approx_search_strategy():
     # Use wrapper insert to simulate exact search data before the switch
     records = [
         {"id": id, "content": "fit content", "metadata": {}, "embedding": vec}
-        for id, vec in zip(ids, train_vectors)
+        for id, vec in zip(ids, train_vectors, strict=True)
     ]
     strategy.db.insert(VectorRecords(dim=128, metric="euclidean", records=records))
 
@@ -69,7 +68,7 @@ def test_add(approx_search_strategy, sample_embeddings):
             "embedding": sample_embeddings,
         },
     ]
-    ids = approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
+    approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
 
     n_ids = len(approx_search_strategy._all_ids)
     n_map = len(approx_search_strategy._id_to_idx)
@@ -180,7 +179,7 @@ def test_save_load(sample_embeddings, tmp_path):
 
     records = [
         {"id": id, "content": f"content {i}", "metadata": {"i": i}, "embedding": vec}
-        for i, (id, vec) in enumerate(zip(ids, vectors))
+        for i, (id, vec) in enumerate(zip(ids, vectors, strict=True))
     ]
     strategy.db.insert(VectorRecords(dim=128, metric="euclidean", records=records))
     strategy.save()

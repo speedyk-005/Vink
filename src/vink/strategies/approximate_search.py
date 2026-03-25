@@ -1,20 +1,24 @@
 import os
 from pathlib import Path
-import numpy as np
 from typing import Literal
 
 import larch.pickle as pickle
 import nanopq
+import numpy as np
 import rii
-from loguru import logger
 from readerwriterlock import rwlock
 
+from vink.exceptions import (
+    DatabaseCorruptedError,
+    IndexNotFittedError,
+    InvalidInputError,
+)
 from vink.filter_parser import FilterToSql
 from vink.models import AnnConfig
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.base import BaseStrategy
-from vink.utils.logging import log_info
-from vink.exceptions import DatabaseCorruptedError, IndexNotFittedError, InvalidInputError
+from vink.utils.logging import log_info, logger
+
 
 class ApproximateSearch(BaseStrategy):
     """
@@ -412,7 +416,7 @@ class ApproximateSearch(BaseStrategy):
 
             self.index = index
 
-        except (pickle.UnpicklingError, EOFError, AttributeError, AssertionError) as e:
+        except (pickle.UnpicklingError, EOFError, AttributeError, AssertionError):
             # Recover from partial save
             log_info(self.verbose, "Partial save detected... Recovering from backup file")
 

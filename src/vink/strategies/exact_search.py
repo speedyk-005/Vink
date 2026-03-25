@@ -1,12 +1,13 @@
 from pathlib import Path
 from typing import Literal
-import numpy as np
 
+import numpy as np
 from readerwriterlock import rwlock
 
 from vink.filter_parser import FilterToSql
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.base import BaseStrategy
+from vink.utils.logging import log_info
 
 
 class ExactSearch(BaseStrategy):

@@ -1,8 +1,8 @@
+import reprlib
 from functools import wraps
 from uuid import UUID
 
 import numpy as np
-import reprlib
 from pydantic import ConfigDict, ValidationError, validate_call
 
 from vink.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError
@@ -102,7 +102,7 @@ def validate_embedding(vecs: list[float] | np.ndarray, metric: str = "euclidean"
     try:
         vecs = np.asarray(vecs, dtype=np.float32)
     except (ValueError, TypeError):
-        raise InvalidInputError("Vector components must be numeric (int or float).")
+        raise InvalidInputError("Vector components must be numeric (int or float).") from None
 
     # Validate shape: must be 1D (d,) or 2D with single row (1, d)
     if not (vecs.ndim == 1 or (vecs.ndim == 2 and vecs.shape[0] == 1)):
@@ -157,4 +157,4 @@ def validate_id(id: str | bytes) -> bytes:
         return val.bytes
 
     except (ValueError, TypeError):
-        raise InvalidIdError(f"Invalid UUIDv7 format: {id}")
+        raise InvalidIdError(f"Invalid UUIDv7 format: {id}") from None

@@ -1,14 +1,13 @@
-import pytest
 import time
-import numpy as np
 from pathlib import Path
-import pysqlite3 as sqlite3
+
+import numpy as np
+import pytest
 
 from vink.models import VectorRecords
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.exact_search import ExactSearch
 from vink.utils.id_generation import generate_id_bytes
-
 
 IDS_TO_DELETE = [generate_id_bytes() for _ in range(2)]
 
@@ -54,7 +53,7 @@ def test_add(exact_search_strategy, sample_embeddings):
             "embedding": sample_embeddings,
         },
     ]
-    ids = exact_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
+    exact_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
 
     n_ids = len(exact_search_strategy._all_ids)
     n_vecs = len(exact_search_strategy._all_vectors)

@@ -1,7 +1,7 @@
 from typing import Annotated, Any, Callable, Literal
 
 import numpy as np
-from pydantic import BaseModel, FailFast, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic.fields import PydanticUndefined
 
 from vink.exceptions import InvalidInputError, VectorDimensionError

@@ -1,29 +1,28 @@
-import json
-import math
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-import numpy as np
 from threading import Thread
 from typing import Callable, Literal
 
-from readerwriterlock import rwlock
+import numpy as np
 import regex as re
 from pydantic import ValidationError
+from readerwriterlock import rwlock
+
+from vink.exceptions import InvalidInputError, VectorDimensionError
+from vink.models import AnnConfig, VectorRecords
+from vink.sql_wrapper import SQLiteWrapper
 
 # The strategies are lazy imported
-
 from vink.strategies.base import BaseStrategy
-from vink.sql_wrapper import SQLiteWrapper
 from vink.utils.input_validation import (
     pretty_errors,
     validate_arguments,
     validate_embedding,
     validate_id,
 )
-from vink.utils.logging import log_info
-from vink.models import AnnConfig, VectorRecords
-from vink.exceptions import InvalidInputError, VectorDimensionError
+from vink.utils.logging import log_info, logger
+
 
 class VinkDB:
     """
@@ -184,7 +183,7 @@ class VinkDB:
 
         Returns:
             dict: Database metadata including version, dimension, metric, strategy,
-                last_saved_at, last_deleted_at, active_count, deleted_count, 
+                last_saved_at, last_deleted_at, active_count, deleted_count,
                 and other stored metadata.
         """
         return {
@@ -215,13 +214,11 @@ class VinkDB:
                         f"Embedding callback output dimension ({validated_vec.shape[-1]}) "
                         f"does not match VinkDB dimension ({self._dim})."
                     )
-            except VectorDimensionError:
-                # Let this specific error bubble up for the test/user
+            except (VectorDimensionError, InvalidInputError):
+                # Let these specific errors bubble up for the test/user
                 raise
             except Exception as e:
-                raise InvalidInputError(
-                    f"Embedding callback crashed during handshake: {e}"
-                )
+                raise InvalidInputError("Embedding callback crashed during handshake") from e
 
         if not self._force_exact:
             self._ann_config.validate_vector_dim(self._dim)
@@ -276,7 +273,7 @@ class VinkDB:
             assigned_ids = self._strategy.add(records)
 
             # Check if switch should be triggered based on new count
-            if not self._ann_building and self._should_switch():  
+            if not self._ann_building and self._should_switch():
                 self._ann_building = True
                 Thread(target=self._prepare_approx_strategy, daemon=True).start()
         else:
@@ -397,9 +394,9 @@ class VinkDB:
             self.strategy,
         )
 
-        query = validate_embedding(query_vec, metric=self._metric)
+        validated_query = validate_embedding(query_vec, metric=self._metric)
         results = self._strategy.search(
-            query_vec, top_k=top_k, include_vectors=include_vectors, filters=filters
+            validated_query, top_k=top_k, include_vectors=include_vectors, filters=filters
         )
 
         log_info(self.verbose, "Found {} results for query.", len(results))
