@@ -78,7 +78,7 @@ class ApproximateSearch(BaseStrategy):
         self.id_to_idx: dict[bytes, int] = {}
 
         # Boolean mask for active/deleted status
-        self.mask: np.ndarray = np.array([], dtype=bool)
+        self.mask: list[bool] = []
 
         # Cache placeholder
         self.active_ids_arr = None
@@ -123,7 +123,7 @@ class ApproximateSearch(BaseStrategy):
         self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
 
         # Initialize mask - all True since these are active
-        self.mask = np.ones(len(self.all_ids), dtype=bool)
+        self.mask = [True] * len(self.all_ids)
 
         self.reconfig_threshold = self._ann_config.reconfig_threshold
 
@@ -195,7 +195,7 @@ class ApproximateSearch(BaseStrategy):
             return
 
         # Caller holds the lock; no nested lock acquisition.
-        active_indices = self.mask.nonzero()[0]
+        active_indices = [i for i, m in enumerate(self.mask) if m]
 
         if len(active_indices) == 0:
             self.active_ids_arr = np.empty((0,), dtype="S16")
@@ -225,7 +225,7 @@ class ApproximateSearch(BaseStrategy):
                 idx = len(self.all_ids)
                 self.all_ids.append(record.id)
                 self.id_to_idx[record.id] = idx
-                self.mask = np.append(self.mask, True)
+                self.mask.append(True)
                 self.active_ids_arr = None
                 embeddings.append(record.embedding)
                 assigned_ids.append(self._bytes_to_uuid_str(record.id))
@@ -320,7 +320,7 @@ class ApproximateSearch(BaseStrategy):
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
         with self._rwlock.gen_wlock():
-            active_indices = self.mask.nonzero()[0]
+            active_indices = [i for i, m in enumerate(self.mask) if m]
             if len(active_indices) <= self._ann_config.codebook_size:
                 logger.warning(
                     "Skipping ANN index rebuild: only {} active vectors, "
@@ -335,7 +335,7 @@ class ApproximateSearch(BaseStrategy):
             self.active_ids_arr = np.array(self.all_ids, dtype="S16")[active_indices]
             self.all_ids = self.active_ids_arr.tolist()
             self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
-            self.mask = np.ones(len(self.all_ids), dtype=bool)
+            self.mask = [True] * len(self.all_ids)
 
             gen = self.db.iter_embeddings()
             first_batch = next(gen, None)
@@ -394,7 +394,7 @@ class ApproximateSearch(BaseStrategy):
             rows = cursor.fetchall()
 
             self.all_ids = [row[0] for row in rows]
-            self.mask = np.array([row[1] for row in rows], dtype=bool)
+            self.mask = [bool(row[1]) for row in rows]
             self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
 
             self._safe_load_ann_index()

@@ -56,7 +56,7 @@ class ExactSearch(BaseStrategy):
         self.id_to_idx: dict[bytes, int] = {}  # Fast O(1) lookup for deletion
 
         # Boolean mask for active/deleted status
-        self.mask: np.ndarray = np.array([], dtype=bool)
+        self.mask: list[bool] = []
 
         # Cache placeholders
         self.active_vectors_arr = None
@@ -68,7 +68,7 @@ class ExactSearch(BaseStrategy):
             return
 
         # Caller holds the lock; no nested lock acquisition.
-        active_indices = self.mask.nonzero()[0]
+        active_indices = [i for i, m in enumerate(self.mask) if m]
 
         if len(active_indices) == 0:
             self.active_vectors_arr = np.empty((0, self.dim), dtype=np.float32)
@@ -96,7 +96,7 @@ class ExactSearch(BaseStrategy):
                 self.all_vectors.append(record.embedding)
                 self.all_ids.append(record.id)
                 self.id_to_idx[record.id] = idx
-                self.mask = np.append(self.mask, True)
+                self.mask.append(True)
 
                 # Invalidate cache
                 self.active_vectors_arr = None
@@ -190,7 +190,7 @@ class ExactSearch(BaseStrategy):
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
         with self._rwlock.gen_wlock():
-            active_indices = self.mask.nonzero()[0]
+            active_indices = [i for i, m in enumerate(self.mask) if m]
 
             self.active_vectors_arr = np.vstack(self.all_vectors).astype(
                 np.float32, copy=False
@@ -200,7 +200,7 @@ class ExactSearch(BaseStrategy):
             self.all_vectors = self.active_vectors_arr.tolist()
             self.all_ids = self.active_ids_arr.tolist()
             self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
-            self.mask = np.ones(len(self.all_ids), dtype=bool)
+            self.mask = [True] * len(self.all_ids)
 
             self.db.compact()
 
@@ -227,7 +227,7 @@ class ExactSearch(BaseStrategy):
 
             self.all_ids = [row[0] for row in rows]
             self.all_vectors = np.vstack([row[1] for row in rows])
-            self.mask = np.array([row[2] for row in rows], dtype=bool)
+            self.mask = [bool(row[2]) for row in rows]
             self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
 
             # Ensure cache is invalidated
