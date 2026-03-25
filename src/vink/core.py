@@ -406,10 +406,10 @@ class VinkDB:
         """
         Check if ANN switch should be triggered based on dual conditions:
         1. Sufficiency: num_vectors >= min_required (num_subspaces * codebook_size)
-        2. Complexity: Normalized power-law (dim * num_vectors / 1M) ^ switch_exp >= 1.0
+        2. Complexity: (1M / num_vectors) ^ switch_exp < 1.0 triggers switch
 
-        Returns:
-            bool: True if conditions met to switch to ANN, False otherwise.
+        Higher switch_exp values stay exact longer. The sweet spot is 1M elements
+        regardless of dimension (normalized to 1.0 at 1M).
         """
         if self._force_exact:
             return False
@@ -424,11 +424,9 @@ class VinkDB:
         if n_vecs < min_required:
             return False
 
-        total_ops = self._dim * n_vecs
-        threshold_ops = 1_000_000
-
-        complexity = (total_ops / threshold_ops) ** cfg.switch_exp
-        return complexity >= 1.0
+        threshold = 1_000_000  # Sweet spot at 1M elements (normalized regardless of dimension)
+        complexity = (threshold / n_vecs) ** cfg.switch_exp
+        return complexity < 1.0
 
     def _prepare_approx_strategy(self) -> None:
         """
