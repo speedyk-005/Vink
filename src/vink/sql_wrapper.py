@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from typing import Generator
+from typing import Generator, Literal
 from importlib.metadata import PackageNotFoundError, version
 
 from vink.models import VectorRecords
@@ -163,10 +163,23 @@ class SQLiteWrapper:
         cursor.execute(sql, params or [])
         return cursor.fetchall()
 
-    def count(self) -> int:
-        """Count the number of active (non-deleted) vectors in the database."""
+    @validate_arguments
+    def count(self, mode: Literal["active", "deleted", "all"]) -> int:
+        """Count vectors in the database.
+
+        Args:
+            mode (Literal["active", "deleted", "all"]): Which vectors to count - "active", "deleted", or "all".
+
+        Returns:
+            int: Count of vectors.
+        """
         cursor = self._conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = FALSE")
+        if mode == "active":
+            cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = FALSE")
+        elif mode == "deleted":
+            cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = TRUE")
+        else:
+            cursor.execute("SELECT COUNT(*) FROM vec_records")
         return cursor.fetchone()[0]
 
     def clear_buffer(self) -> None:

@@ -82,9 +82,8 @@ def test_add(approx_search_strategy, sample_embeddings):
         f"Sync Error! Expected {expected} records, but got: IDs={n_ids}, Map={n_map}"
     )
 
-    cursor = approx_search_strategy.db.conn.cursor()
-    db_count = approx_search_strategy.db.count()
-    assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
+    active_count = approx_search_strategy.db.count("active")
+    assert active_count == expected, f"Database count mismatch: {active_count} != {expected}"
 
 
 def test_soft_delete(approx_search_strategy):
@@ -102,9 +101,8 @@ def test_soft_delete(approx_search_strategy):
         f"IDs={n_ids}, Mask={n_mask}"
     )
 
-    cursor = approx_search_strategy.db.conn.cursor()
-    db_count = approx_search_strategy.db.count()
-    assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
+    active_count = approx_search_strategy.db.count("active")
+    assert active_count == expected, f"Database count mismatch: {active_count} != {expected}"
 
 
 @pytest.mark.parametrize("sample_records", [{"num": 4}], indirect=True)
@@ -155,9 +153,8 @@ def test_compact(approx_search_strategy):
     assert approx_search_strategy.index is not None, "Index should be rebuilt"
     assert approx_search_strategy.index is not index_before, "Index should be a new instance"
 
-    cursor = approx_search_strategy.db.conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = TRUE")
-    assert cursor.fetchone()[0] == 0, "All soft-deleted records should be hard-deleted from SQLite"
+    deleted_count = approx_search_strategy.db.count("deleted")
+    assert deleted_count == 0, "All soft-deleted records should be hard-deleted from SQLite"
 
 
 def test_save_load(sample_embeddings):

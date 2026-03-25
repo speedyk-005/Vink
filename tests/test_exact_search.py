@@ -67,10 +67,8 @@ def test_add(exact_search_strategy, sample_embeddings):
         f"IDs={n_ids}, Vectors={n_vecs}, Map={n_map}"
     )
 
-    cursor = exact_search_strategy.db.conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = 0")
-    db_count = cursor.fetchone()[0]
-    assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
+    active_count = exact_search_strategy.db.count("active")
+    assert active_count == expected, f"Database count mismatch: {active_count} != {expected}"
 
 
 def test_soft_delete(exact_search_strategy):
@@ -89,8 +87,8 @@ def test_soft_delete(exact_search_strategy):
         f"IDs={n_ids}, Vectors={n_vecs}, Mask={n_mask}"
     )
 
-    db_count = exact_search_strategy.db.count()
-    assert db_count == expected, f"Database count mismatch: {db_count} != {expected}"
+    active_count = exact_search_strategy.db.count("active")
+    assert active_count == expected, f"Database count mismatch: {active_count} != {expected}"
 
 
 @pytest.mark.parametrize("sample_records", [{"num": 4}], indirect=True)
@@ -135,9 +133,8 @@ def test_compact(exact_search_strategy):
     assert len(exact_search_strategy.mask) == len(exact_search_strategy.all_ids), "mask length should match all_ids"
     assert all(exact_search_strategy.mask), "All entries in mask should be True"
 
-    cursor = exact_search_strategy.db.conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM vec_records WHERE deleted = TRUE")
-    assert cursor.fetchone()[0] == 0, "All soft-deleted records should be hard-deleted from SQLite"
+    deleted_count = exact_search_strategy.db.count("deleted")
+    assert deleted_count == 0, "All soft-deleted records should be hard-deleted from SQLite"
 
 
 def test_save_load(sample_embeddings):

@@ -386,7 +386,7 @@ class ApproximateSearch(BaseStrategy):
             log_info(self.verbose, "Index already loaded, skipping.")
             return
 
-        if self.db.count() == 0:
+        if self.db.count("active") == 0:
             return
 
         with self._rwlock.gen_wlock():
