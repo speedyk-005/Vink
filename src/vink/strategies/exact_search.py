@@ -118,7 +118,7 @@ class ExactSearch(BaseStrategy):
         """
         with self._rwlock.gen_wlock():
             for id_bytes in ids:
-                idx = self.id_to_idx.pop(id_bytes, None)
+                idx = self.id_to_idx.get(id_bytes)
                 if idx is not None:
                     self.mask[idx] = False
 
@@ -199,6 +199,7 @@ class ExactSearch(BaseStrategy):
 
             self.all_vectors = self.active_vectors_arr.tolist()
             self.all_ids = self.active_ids_arr.tolist()
+            self.id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self.all_ids)}
             self.mask = np.ones(len(self.all_ids), dtype=bool)
 
             self.db.compact()

@@ -126,11 +126,11 @@ class SQLiteWrapper:
         ]
 
         cursor.executemany(
-            "INSERT INTO vec_records (id, metadata, embedding, buffered) VALUES (?, jsonb(?), ?, ?)",
+            "INSERT OR REPLACE INTO vec_records (id, metadata, embedding, buffered) VALUES (?, jsonb(?), ?, ?)",
             [(r["id"], r["metadata"], r["embedding"], is_buffer) for r in records],
         )
         cursor.executemany(
-            "INSERT INTO content_fts5 (id, content) VALUES (?, ?)",
+            "INSERT OR REPLACE INTO content_fts5 (id, content) VALUES (?, ?)",
             [(r["id"], r["content"]) for r in records],
         )
 
