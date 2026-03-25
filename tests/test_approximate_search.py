@@ -104,7 +104,7 @@ def test_soft_delete(approx_search_strategy):
 
 
 @pytest.mark.parametrize("sample_records", [{"num": 4}], indirect=True)
-def test_search(approx_search_strategy, sample_records):
+def test_search_without_filter(approx_search_strategy, sample_records):
     """Test that search retrieves, ranks, and returns correct vector fields."""
     approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=sample_records))
 
@@ -132,6 +132,25 @@ def test_search(approx_search_strategy, sample_records):
             assert np.allclose(res_item["embedding"], record["embedding"]), (
                 f"Embedding mismatch for {rec_id_str}"
             )
+
+
+@pytest.mark.parametrize("sample_records", [{"num": 4}], indirect=True)
+def test_search_with_filter(approx_search_strategy, sample_records):
+    """Test that search with filter returns only matching records."""
+    for i, record in enumerate(sample_records):
+        record["metadata"]["category"] = "tech" if i % 2 == 0 else "science"
+
+    approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=sample_records))
+
+    query_embedding = sample_records[0]["embedding"]
+    results = approx_search_strategy.search(
+        query_embedding, top_k=2, filters=["category == 'tech'"]
+    )
+
+    assert len(results) == 2, f"Expected 2 results, got {len(results)}"
+    assert all(r["metadata"]["category"] == "tech" for r in results), (
+        "All results should have category=tech"
+    )
 
 
 def test_compact(approx_search_strategy):

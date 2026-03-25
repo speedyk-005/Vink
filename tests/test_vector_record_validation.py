@@ -119,3 +119,18 @@ def test_dimension_mismatch():
         VectorRecords(
             dim=expected_dim, metric="cosine", records=[{"content": "test", "embedding": embedding}]
         )
+
+
+def test_ann_config_validate_vector_dim():
+    """Test that AnnConfig.validate_vector_dim catches invalid configurations."""
+    from vink.models import AnnConfig
+
+    # num_subspaces > dim
+    config = AnnConfig(num_subspaces=256, codebook_size=8)
+    with pytest.raises(VectorDimensionError, match="cannot exceed dim"):
+        config.validate_vector_dim(128)
+
+    # dim not divisible by num_subspaces
+    config = AnnConfig(num_subspaces=5, codebook_size=8)
+    with pytest.raises(VectorDimensionError, match="must be divisible"):
+        config.validate_vector_dim(128)

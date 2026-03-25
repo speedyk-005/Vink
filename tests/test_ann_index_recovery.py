@@ -128,3 +128,20 @@ def test_power_cut_after_commit_before_swap(approx_search_strategy):
 
     assert strategy.index.N == 20, f"Expected N=29 but got {strategy.index.N}"
     assert strategy.db.count("active") == 20, f"Expected count=20 but got {strategy.db.count('active')}"
+
+
+def test_main_index_corrupted_wal_missing(approx_search_strategy):
+    """Main index corrupted, WAL missing - should raise DatabaseCorruptedError."""
+    db_path = approx_search_strategy.dir_path
+    ann_index_path = db_path / "ann_index.pkl"
+
+    # Corrupt main index
+    ann_index_path.write_bytes(b"corrupted")
+
+    # Close the fixture's connection to release lock
+    approx_search_strategy.db.close()
+
+    # Load should raise DatabaseCorruptedError
+    strategy = _create_bare_approx_strategy(db_path)
+    with pytest.raises(Exception):
+        strategy.load(overwrite=True)
