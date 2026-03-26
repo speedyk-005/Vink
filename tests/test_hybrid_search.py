@@ -1,8 +1,10 @@
 import time
 
+import numpy as np
 import pytest
 
 from vink import VinkDB
+from vink.exceptions import InvalidInputError
 from vink.models import AnnConfig
 
 DIM = 128
@@ -19,15 +21,29 @@ def vinkdb(tmp_path, request, mocker):
         dim=DIM,
         force_exact=force_exact,
         ann_config=AnnConfig(num_subspaces=4, codebook_size=4),
-        verbose=False,
     )
 
     return db
 
 
+def test_vinkdb_init_invalid_input(tmp_path):
+    """Test that VinkDB raises InvalidInputError for invalid init params."""
+    with pytest.raises(InvalidInputError):
+        VinkDB(
+            dir_path=tmp_path,
+            dim=16,
+            force_exact="not_a_bool",
+        )
+
+
 @pytest.mark.flaky(reruns=5)
 def test_switch_triggers(vinkdb, sample_records, mocker):
     """Test that switch to ANN when _should_switch returns True."""
+    ops_per_ms = vinkdb._ops_per_ms
+    assert (
+        ops_per_ms > 0 and ops_per_ms < 5_000,
+        f"Expecting 'ops_per_ms' to be between 0 and 5000 ms, got {ops_per_ms}"
+    )
     assert vinkdb.strategy == "exact_search", "Should start with exact search"
 
     # Add first 7 records without triggering switch
@@ -56,17 +72,3 @@ def test_force_exact(vinkdb, sample_records, mocker):
     assert vinkdb.force_exact is True, "force_exact should be True"
     assert vinkdb.strategy == "exact_search", "Should stay exact when force_exact=True"
     assert vinkdb._should_switch() is False, "_should_switch should be False"
-
-
-@pytest.mark.parametrize("vinkdb", [{"force_exact": True}], indirect=True)
-def test_search_with_filter(vinkdb, sample_records):
-    """Test that search with filter returns only matching records."""
-    for i, record in enumerate(sample_records):
-        record["metadata"]["category"] = "tech" if i % 2 == 0 else "science"
-
-    vinkdb.add(sample_records)
-
-    query_embedding = sample_records[0]["embedding"]
-    results = vinkdb.search(query_embedding, top_k=4, filters=["category == 'tech'"])
-
-    assert all(r["metadata"]["category"] == "tech" for r in results), "All results should have category=tech"

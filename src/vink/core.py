@@ -1,12 +1,13 @@
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Thread
-from typing import Callable, Literal
+from typing import Callable, Literal, Annotated
 
 import numpy as np
 import regex as re
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 from readerwriterlock import rwlock
 
 from vink.exceptions import InvalidInputError, VectorDimensionError
@@ -46,7 +47,6 @@ class VinkDB:
         >>> config = AnnConfig(
         ...     num_subspaces=16,
         ...     codebook_size=128,
-        ...     switch_exp=1.0,
         ...     quantizer="pq"
         ... )
         >>> db = VinkDB(dir_path="./data", dim=384, ann_config=config)
@@ -58,10 +58,11 @@ class VinkDB:
     def __init__(
         self,
         dir_path: str | Path,
-        dim: int,
+        dim:  Annotated[int, Field(ge=32)],
         metric: Literal["euclidean", "cosine"] = "euclidean",
         force_exact: bool = False,
         ann_config: AnnConfig | None = None,
+        switch_latency_ms: float = 300,
         embedding_callback: Callable | None = None,
         overwrite: bool = False,
         verbose: bool = False,
@@ -71,20 +72,20 @@ class VinkDB:
 
         Note:
             The only editable attributes after initialization are:
-                - reconfig_threshold
+                - ann_config
+                - embedding_callback (validated once)
                 - verbose
-                - embedding_callback
             Everything else is read-only properties.
 
         Args:
             dir_path (str | Path): Directory path to store vector data. Contains the pickled index
                 and SQLite database for vector records.
                 Use ":memory:" for volatile in-memory storage.
-            dim (int): Dimension of the vectors.
+            dim (int): Dimension of the vectors. Must be higher than 32.
             metric (Literal["euclidean", "cosine"], optional): Distance metric to use.
                 Defaults to "euclidean".
             force_exact (bool, optional): If True, only exact calculation is used.
-                If False, switches between exact and ANN based on switch_exp.
+                If False, switches between exact and ANN based on runtime calibration.
                 Defaults to False.
             ann_config (AnnConfig, optional): Configuration for approximate nearest neighbor search.
                 Used during switching and compacting. Defaults to ANNConfig with standard settings.
@@ -94,6 +95,9 @@ class VinkDB:
                 vector records as it will be generated via this callback. Defaults to None.
             overwrite (bool, optional): Overwrite existing index if exists. Defaults to False.
             verbose (bool, optional): Enable verbose output. Defaults to False.
+            switch_latency_ms (float, optional): Switch to ANN when exact search
+                predicted latency exceeds this threshold in milliseconds.
+                Defaults to 300ms.
         """
         # Determine if in-memory mode
         self._in_memory = isinstance(dir_path, str) and dir_path.strip() == ":memory:"
@@ -110,7 +114,11 @@ class VinkDB:
         if not (self._force_exact or self._ann_config):
             self._ann_config = AnnConfig()
 
+        self._switch_latency_ms = switch_latency_ms
+
         self._validate_config()
+
+        self._ops_per_ms = self._calibrate_throughput()
 
         if not self._in_memory:
             if overwrite and self._dir_path.exists():
@@ -135,6 +143,31 @@ class VinkDB:
         self._ann_building = False
         self._rwlock = rwlock.RWLockFair()
 
+    def _validate_config(self) -> None:
+        """
+        Handshake to verify embedding dimensions and PQ constraints.
+        """
+        # Callback Handshake validation
+        if self.embedding_callback:
+            try:
+                raw_vec = self.embedding_callback("vink_warmup_test")
+
+                # This handles casting, shape normalization (1, d), and L2 projection
+                validated_vec = validate_embedding(raw_vec, metric=self._metric)
+
+                if validated_vec.shape[-1] != self._dim:
+                    raise VectorDimensionError(
+                        f"Embedding callback output dimension ({validated_vec.shape[-1]}) "
+                        f"does not match VinkDB dimension ({self._dim})."
+                    )
+            except (VectorDimensionError, InvalidInputError):
+                # Let these specific errors bubble up for the test/user
+                raise
+            except Exception as e:
+                raise InvalidInputError("Embedding callback crashed during handshake") from e
+
+        if not self._force_exact:
+            self._ann_config.validate_vector_dim(self._dim)
 
     @property
     def dir_path(self) -> Path:
@@ -196,32 +229,6 @@ class VinkDB:
             "active_count": self.count("active"),
             "deleted_count": self.count("deleted"),
         }
-
-    def _validate_config(self) -> None:
-        """
-        Internal handshake to verify embedding dimensions and PQ constraints.
-        """
-        # Callback Handshake validation
-        if self.embedding_callback:
-            try:
-                raw_vec = self.embedding_callback("vink_warmup_test")
-
-                # This handles casting, shape normalization (1, d), and L2 projection
-                validated_vec = validate_embedding(raw_vec, metric=self._metric)
-
-                if validated_vec.shape[-1] != self._dim:
-                    raise VectorDimensionError(
-                        f"Embedding callback output dimension ({validated_vec.shape[-1]}) "
-                        f"does not match VinkDB dimension ({self._dim})."
-                    )
-            except (VectorDimensionError, InvalidInputError):
-                # Let these specific errors bubble up for the test/user
-                raise
-            except Exception as e:
-                raise InvalidInputError("Embedding callback crashed during handshake") from e
-
-        if not self._force_exact:
-            self._ann_config.validate_vector_dim(self._dim)
 
     @validate_arguments
     def add(self, vector_records: list[dict]) -> list[str]:
@@ -394,6 +401,10 @@ class VinkDB:
             self.strategy,
         )
 
+        active_count = self.count("active")
+        if top_k > active_count:
+            top_k = active_count
+
         validated_query = validate_embedding(query_vec, metric=self._metric)
         results = self._strategy.search(
             validated_query, top_k=top_k, include_vectors=include_vectors, filters=filters
@@ -402,14 +413,49 @@ class VinkDB:
         log_info(self.verbose, "Found {} results for query.", len(results))
         return results
 
+    def _calibrate_throughput(self, test_n: int = 10000) -> float:
+        """Calibrate throughput by measuring device performance.
+
+        Runs a quick BLAS matrix-vector multiply benchmark to measure raw compute
+        throughput, then applies a 2x overhead factor to account for the gap between
+        optimized BLAS and actual exact search (Python loops, SQLite lookups, etc.).
+
+        This calibrated throughput is used to predict exact search latency at any
+        given vector count: predicted_time_ms = (n_vectors * dim) / ops_per_ms
+
+        Args:
+            test_n: Number of vectors to use for calibration. Defaults to 10000.
+
+        Returns:
+            float: Calibrated operations per millisecond the device can sustain.
+        """
+        log_info(self.verbose, "Calibrating throughput...",)
+
+        start = time.perf_counter()
+
+        vectors = np.random.randn(test_n, self._dim).astype(np.float32)
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        vectors = vectors / (norms + 1e-8)
+
+        query = np.random.randn(self._dim).astype(np.float32)
+        query = query / (np.linalg.norm(query) + 1e-8)
+
+        _ = vectors @ query
+
+        elapsed = time.perf_counter() - start
+        ops = test_n * self._dim
+        ops_per_sec = (ops / elapsed) * 2
+        ops_per_ms = ops_per_sec / 1000
+
+        log_info(self.verbose, "Calibration complete: {:.0f} ops/ms", ops_per_ms)
+        return ops_per_ms
+
     def _should_switch(self) -> bool:
         """
-        Check if ANN switch should be triggered based on dual conditions:
-        1. Sufficiency: num_vectors >= min_required (num_subspaces * codebook_size)
-        2. Complexity: (1M / num_vectors) ^ switch_exp < 1.0 triggers switch
+        Check if ANN switch should be triggered based on:
 
-        Higher switch_exp values stay exact longer. The sweet spot is 1M elements
-        regardless of dimension (normalized to 1.0 at 1M).
+        1. Sufficiency: num_vectors >= min_required (num_subspaces * codebook_size)
+        2. Latency prediction: predicted exact search time > switch_latency_ms
         """
         if self._force_exact:
             return False
@@ -424,9 +470,10 @@ class VinkDB:
         if n_vecs < min_required:
             return False
 
-        threshold = 1_000_000  # Sweet spot at 1M elements (normalized regardless of dimension)
-        complexity = (threshold / n_vecs) ** cfg.switch_exp
-        return complexity < 1.0
+        ops = n_vecs * self._dim
+        predicted_time = ops / self._ops_per_ms
+
+        return predicted_time > self._switch_latency_ms
 
     def _prepare_approx_strategy(self) -> None:
         """
@@ -504,6 +551,7 @@ class VinkDB:
             "Buffer dump: added {} vectors to ANN index.",
             len(records),
         )
+
 
     def __enter__(self) -> "VinkDB":
         return self

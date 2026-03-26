@@ -19,8 +19,8 @@ Features:
 Technical Background:
     Vink uses Reconfigurable Inverted Index (RII) with Product Quantization (PQ)
     for approximate nearest neighbor search. The switch from exact to approximate
-    happens when the normalized power-law complexity reaches 1.0:
-    (dim * vectors / 1M) ^ switch_exp >= 1.0. Default switch_exp is 1.0.
+    happens when predicted exact search latency exceeds switch_latency_ms (default 300ms).
+    Throughput is calibrated at init time to measure actual device performance.
 
 References:
     .. [Matsui18] Matsui et al., "Reconfigurable Inverted Index", ACM MM 2018.

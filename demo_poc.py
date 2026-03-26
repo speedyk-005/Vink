@@ -18,11 +18,8 @@ from vink import AnnConfig, VinkDB
 console = Console()
 
 DIM = 128
-SWITCH_EXP = 1
-MAX_VECTORS = 55000
-BATCH_SIZE = 5000
-MIN_REQUIRED = 32 * 256  # num_subspaces × codebook_size
-THRESHOLD = max(MIN_REQUIRED, int(1_000_000 / DIM))
+MAX_VECTORS = 125_000
+BATCH_SIZE = 20_000
 
 
 def demonstrate_automatic_switch():
@@ -35,10 +32,9 @@ def demonstrate_automatic_switch():
     intro_text = textwrap.dedent(f"""
         [bold]Setup:[/bold]
           • Vector Dimension: {DIM}
-          • ANN switch_exp: {SWITCH_EXP}
-          • Min vectors required: {MIN_REQUIRED:,} (num_subspaces × codebook_size)
+          • Min vectors required: 8,192 (num_subspaces × codebook_size)
           • Automatic switch enabled
-          • Switch threshold: (dim × N / 1M)^{SWITCH_EXP} >= 1.0 => N >= {THRESHOLD:,}
+          • Switch threshold: 300ms latency prediction
 
         [bold]What to watch:[/bold]
           • Strategy column shows when switch happens (exact_search => approximate_search)
@@ -55,12 +51,12 @@ def demonstrate_automatic_switch():
     table.add_column("Status", justify="center")
 
     # Create DB with automatic switching enabled
-    config = AnnConfig(switch_exp=SWITCH_EXP)
-    db = VinkDB(dir_path=":memory:", dim=DIM, ann_config=config, verbose=True)
+    config = AnnConfig()
+    db = VinkDB(dir_path=":memory:", dim=DIM, ann_config=config, switch_latency_ms=300, verbose=True)
 
     count = 0
     ann_switched = False
-    while count < MAX_VECTORS:
+    while count < MAX_VECTORS and not ann_switched:
         count += BATCH_SIZE
         batch_vectors = np.random.randn(BATCH_SIZE, DIM).astype(np.float32)
 
