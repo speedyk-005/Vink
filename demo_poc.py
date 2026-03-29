@@ -18,8 +18,8 @@ from vink import AnnConfig, VinkDB
 console = Console()
 
 DIM = 128
-MAX_VECTORS = 125_000
-BATCH_SIZE = 20_000
+MAX_VECTORS = 100_000
+BATCH_SIZE = 10_000
 
 
 def demonstrate_automatic_switch():

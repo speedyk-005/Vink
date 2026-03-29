@@ -25,7 +25,7 @@ class AnnConfig(BaseModel):
         description="Number of centroids per subspace. Affects memory usage and search accuracy.",
     )
     reconfig_threshold: Annotated[int, Field(ge=5000)] = Field(
-        20_000,
+        100_000,
         description="Number of inserts before reconfiguring the index to maintain search performance.",
     )
 
