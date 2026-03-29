@@ -4,6 +4,10 @@ Vink: Vector Incremental Nano Kit
 A lightweight vector database that incrementally switches from exact to
 approximate search as your data grows — without full index rebuilds.
 
+Note:
+    ANN switching is one-way — once switched to approximate search,
+    the system will never switch back to exact search.
+
 Key differentiators:
     - **Incremental inserts**: Add vectors anytime — no rebuild per insert.
     - **Automatic strategy switching**: No manual tuning — exact for small datasets, ANN for large.
