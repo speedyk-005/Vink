@@ -29,7 +29,7 @@ class AnnConfig(BaseModel):
         description="Power-law exponent for complexity: values >1.0 stay lower for small data but trigger the ANN switch faster after 1M total operations (D * N).",
     )
     reconfig_threshold: Annotated[int, Field(ge=5000)] = Field(
-        20_000,
+        100_000,
         description="Number of inserts before reconfiguring the index to maintain search performance.",
     )
 

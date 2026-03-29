@@ -104,9 +104,7 @@ class ApproximateSearch(BaseStrategy):
 
         It processes all currently indexed vectors to generate the subspace codebooks
         required for approximate search.
-        The quantizer is initialized with K-means++ ('++') to ensure robust initialization
-        of codebooks across the feature space, improving clustering stability
-        and reconstruction accuracy.
+        The quantizer is trained with randomly sampled vectors.
 
         Args:
             vectors (np.ndarray): A 2D array of shape (N, D) representing the N vectors
@@ -131,12 +129,13 @@ class ApproximateSearch(BaseStrategy):
 
         self.reconfig_threshold = self._ann_config.reconfig_threshold
 
-        # Sample subset for training for codec training
-        max_train_size = 1000
-        n_vectors = len(vectors)
-        if n_vectors > max_train_size:
+        # Sample training vectors for codec training
+        n_vecs = len(vectors)
+        Ks = self._ann_config.codebook_size
+        max_train_size = min(n_vecs, max(Ks * 10, 5000))
+        if n_vecs > max_train_size:
             rng = np.random.default_rng()
-            train_indices = rng.choice(n_vectors, size=max_train_size, replace=False)
+            train_indices = rng.choice(n_vecs, size=max_train_size, replace=False)
             train_vectors = vectors[train_indices]
         else:
             train_vectors = vectors
@@ -155,17 +154,16 @@ class ApproximateSearch(BaseStrategy):
             "metric": self.metric,
             "verbose": False,
         }
-
+  
         if self._ann_config.quantizer == "opq":
             codec = nanopq.OPQ(**codec_params)
 
-            # Use parametric_init=True for rotation optimization. Since our vectors
-            # are normalized, this aligns subspaces with principal components.
-            codec.fit(train_vectors, parametric_init=True, minit="++")
+            # minit="points" is fast since training vectors are already randomly sampled.
+            codec.fit(train_vectors, minit="points")
             indexed_vecs = codec.rotate(vectors)
         else:
             codec = nanopq.PQ(**codec_params)
-            codec.fit(train_vectors, minit="++")
+            codec.fit(train_vectors, minit="points")
             indexed_vecs = vectors
 
         # Initialize Rii with the trained codec
