@@ -28,13 +28,16 @@ class VinkDB:
     """
     Pure Python vector database with hybrid exact/approximate nearest neighbor search.
 
-    VinkDB automatically switches between exact brute-force search and approximate
+    VinkDB automatically switches from exact brute-force search to approximate
     nearest neighbor (ANN) search based on dataset size, using Reconfigurable Inverted
     Index (RII) and Product Quantization (PQ) for efficient ANN.
 
+    Note:
+        ANN switching is one-way — once switched, the system never switches back to exact search.
+
     Features:
         - Hybrid search: exact for small datasets, ANN for large datasets.
-        - Automatic strategy switching based on normalized power-law complexity.
+        - Automatic strategy switching based on runtime-calibrated latency prediction.
         - Normalized embeddings for consistent distance metrics.
         - Supports Euclidean (L2) and cosine (dot) product similarity.
         - Soft deletes: efficient deletion without data reorganization.
@@ -464,11 +467,11 @@ class VinkDB:
 
         self._ann_building = False
 
-        buffer_rows = self._records_db.fetch(
-            where="buffered = TRUE AND deleted = FALSE",
-            include_vectors=True,
-            params=[],
-        )
+        cursor = self._records_db.conn.cursor()
+        buffer_rows = cursor.execute("""
+            SELECT id, embedding FROM vec_records
+            WHERE buffered = TRUE AND deleted = FALSE
+        """).fetchall()
 
         if not buffer_rows:
             return
@@ -476,7 +479,7 @@ class VinkDB:
         records = [
             {
                 "id": row[0],
-                "embedding": np.frombuffer(row[3], dtype=np.float32),
+                "embedding": np.frombuffer(row[1], dtype=np.float32),
 
                 # Not used, kept for validation
                 "content": "",
@@ -485,18 +488,6 @@ class VinkDB:
             for row in buffer_rows
         ]
 
-        Thread(
-            target=lambda: self._drain_buffer(strategy, records),
-            daemon=True,
-        ).start()
-
-    def _drain_buffer(self, strategy, records: list[dict]) -> None:
-        """Drain the buffer into the ANN index in a background thread.
-
-        This runs as a daemon thread so that add() and search() calls
-        can proceed immediately after the strategy swap, without waiting
-        for the buffer dump to complete.
-        """
         strategy.add(VectorRecords(dim=self.dim, metric=self.metric, records=records), is_buffer=True)
         self._records_db.clear_buffer()
         log_info(
