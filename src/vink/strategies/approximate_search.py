@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from threading import Thread
 from typing import Literal
 
 import larch.pickle as pickle
@@ -73,6 +74,8 @@ class ApproximateSearch(BaseStrategy):
         self._rwlock = rwlock.RWLockFair()
         self._filter_to_sql = FilterToSql()
         self._delta_since_reconfig = 0
+        self.is_reconfig = False
+        self.is_compacting = False
 
         self.index: rii.Rii | None = None
 
@@ -178,9 +181,13 @@ class ApproximateSearch(BaseStrategy):
             )
 
     def _do_reconfigure(self) -> None:
-        log_info(self.verbose, "ANN index reconfiguration in progress (this may take a moment)...")
+        """Run index.reconfigure() in background thread."""
+        log_info(self.verbose, "ANN index reconfiguration in progress...")
+
         self.index.reconfigure()
         self._delta_since_reconfig = 0
+        self.is_reconfig = False
+
         log_info(self.verbose, "ANN index reconfigured.")
 
     def _ensure_cache(self) -> None:
@@ -230,8 +237,13 @@ class ApproximateSearch(BaseStrategy):
             self.db.insert(vector_records)
 
         self._delta_since_reconfig += len(vector_records.records)
-        if self._delta_since_reconfig >= self.reconfig_threshold:
-            self._do_reconfigure()
+        if (
+            not (self.is_reconfig or self.is_compacting)
+            and self._delta_since_reconfig >= self.reconfig_threshold
+        ):
+            self.is_reconfig = True
+            thread = Thread(target=self._do_reconfigure, daemon=True)
+            thread.start()
 
         return assigned_ids
 
@@ -299,7 +311,13 @@ class ApproximateSearch(BaseStrategy):
                 # Use cached versions
                 filtered_ids = self.active_ids_arr
 
-            ids, scores = self._query_index(query_vec, filtered_ids, top_k)
+            if self.is_reconfig:
+                # Use linear scan during reconfiguration to avoid inconsistent results
+                # from inverted index being updated in background. Linear is still fast
+                # since it uses ADist on PQ-coded vectors (M table lookups, not full vectors).
+                ids, scores = self._query_index(query_vec, filtered_ids, top_k, method="linear")
+            else:
+                ids, scores = self._query_index(query_vec, filtered_ids, top_k)
 
         if not ids:
             return []
@@ -314,6 +332,8 @@ class ApproximateSearch(BaseStrategy):
 
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
+        self.is_compacting = True
+
         with self._rwlock.gen_wlock():
             active_indices = [i for i, m in enumerate(self._mask) if m]
             if len(active_indices) <= self._ann_config.codebook_size:
@@ -345,6 +365,8 @@ class ApproximateSearch(BaseStrategy):
                     [np.frombuffer(vecs, dtype=np.float32) for vecs in batch]
                 )
                 self.index.add(embeddings)
+
+        self.is_compacting = False
 
     def save(self) -> None:
         """Save the index to disk using double-write strategy for tight syncing."""
