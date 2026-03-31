@@ -68,13 +68,11 @@ class ApproximateSearch(BaseStrategy):
             metric=metric,
             verbose=verbose,
         )
-        self.metric = self.NANOPQ_METRIC_MAP[metric]
-
+        self._ann_config = ann_config
 
         self._rwlock = rwlock.RWLockFair()
         self._filter_to_sql = FilterToSql()
         self._delta_since_reconfig = 0
-        self._ann_config = ann_config
 
         self.index: rii.Rii | None = None
 
@@ -148,27 +146,21 @@ class ApproximateSearch(BaseStrategy):
             self._ann_config.codebook_size,
         )
 
-        codec_params = {
-            "M": self._ann_config.num_subspaces,
-            "Ks": self._ann_config.codebook_size,
-            "metric": self.metric,
-            "verbose": False,
-        }
-  
-        if self._ann_config.quantizer == "opq":
-            codec = nanopq.OPQ(**codec_params)
 
-            # minit="points" is fast since training vectors are already randomly sampled.
-            codec.fit(train_vectors, minit="points")
-            indexed_vecs = codec.rotate(vectors)
-        else:
-            codec = nanopq.PQ(**codec_params)
-            codec.fit(train_vectors, minit="points")
-            indexed_vecs = vectors
+        pq_class = nanopq.PQ if self._ann_config.quantizer == "pq" else nanopq.OPQ
+        codec = pq_class(
+            M=self._ann_config.num_subspaces,
+            Ks=self._ann_config.codebook_size,
+            metric=self.NANOPQ_METRIC_MAP[self.metric],
+            verbose=False,
+        )
+
+        # minit="points" is fast since training vectors are already randomly sampled.
+        codec.fit(train_vectors, minit="points")
 
         # Initialize Rii with the trained codec
         self.index = rii.Rii(fine_quantizer=codec)
-        self.index.add_configure(vecs=indexed_vecs)
+        self.index.add_configure(vecs=vectors)
 
         log_info(self.verbose, "ANN index fit completed successfully.")
 
@@ -233,6 +225,7 @@ class ApproximateSearch(BaseStrategy):
                 assigned_ids.append(self._bytes_to_uuid_str(record.id))
 
         self.index.add(np.vstack(embeddings))
+
         if not is_buffer:
             self.db.insert(vector_records)
 
@@ -470,16 +463,15 @@ class ApproximateSearch(BaseStrategy):
         if len(target_indices) == 0:
             return [], np.array([])
 
-        # If OPQ is active, the query must be rotated into the same
-        # optimized subspace used during the training phase.
-        if self._ann_config.quantizer == "opq":
-            query_vec = self.index.fine_quantizer.rotate(query_vec)
-
         indices, top_scores = self.index.query(
             query_vec,
             topk=top_k,  # rii index uses topk instead of top_k
             target_ids=target_indices,
         )
         top_ids = [self._all_ids[i] for i in indices]
+
+        if self.metric == "cosine":
+            # Since rii uses ascending order
+            top_scores = 1 - (top_scores/2)
 
         return top_ids, top_scores
