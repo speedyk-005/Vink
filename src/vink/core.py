@@ -313,21 +313,15 @@ class VinkDB:
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index.
 
-        Runs in a background daemon thread so add()/search() remain unblocked.
-
         Note:
-            For ApproximateSearch, the ANN index is rebuilt only if there are enough
-            active vectors to retrain the codec. If not enough vectors remain, the
-            rebuild is skipped and a warning is logged.
+            For ApproximateSearch, the ANN index is rebuilt from scratch which can take
+            20-200+ seconds depending on data size. This operation should be called
+            during maintenance windows or off-peak hours.
+            If not enough vectors remain to retrain the codec, rebuild is skipped.
         """
         log_info(self.verbose, "Compacting database...")
-
-        def _do_compact():
-            self._strategy.compact()
-            log_info(self.verbose, "Compaction complete.")
-
-        thread = Thread(target=_do_compact, daemon=True)
-        thread.start()
+        self._strategy.compact()
+        log_info(self.verbose, "Compaction complete.")
 
     def save(self) -> None:
         """Save the index to disk."""
