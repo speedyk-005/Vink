@@ -2,11 +2,11 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Thread
-from typing import Callable, Literal
+from typing import Callable, Literal, Annotated
 
 import numpy as np
 import regex as re
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 from readerwriterlock import rwlock
 
 from vink.exceptions import InvalidInputError, VectorDimensionError
@@ -14,6 +14,7 @@ from vink.models import AnnConfig, VectorRecords
 from vink.sql_wrapper import SQLiteWrapper
 
 # The strategies are lazy imported
+
 from vink.strategies.base import BaseStrategy
 from vink.utils.input_validation import (
     pretty_errors,
@@ -26,7 +27,7 @@ from vink.utils.logging import log_info, logger
 
 class VinkDB:
     """
-    Pure Python vector database with hybrid exact/approximate nearest neighbor search.
+    Vector database with hybrid exact/approximate nearest neighbor search.
 
     VinkDB automatically switches from exact brute-force search to approximate
     nearest neighbor (ANN) search based on dataset size, using Reconfigurable Inverted
@@ -36,6 +37,7 @@ class VinkDB:
         ANN switching is one-way — once switched, the system never switches back to exact search.
 
     Features:
+
         - Hybrid search: exact for small datasets, ANN for large datasets.
         - Automatic strategy switching based on runtime-calibrated latency prediction.
         - Normalized embeddings for consistent distance metrics.
@@ -43,6 +45,7 @@ class VinkDB:
         - Soft deletes: efficient deletion without data reorganization.
 
     Getting ANNConfig:
+
         To customize ANN behavior, create an ANNConfig instance:
 
         >>> from vink import AnnConfig
@@ -61,7 +64,7 @@ class VinkDB:
     def __init__(
         self,
         dir_path: str | Path,
-        dim: int,
+        dim:  Annotated[int, Field(ge=16)],
         metric: Literal["euclidean", "cosine"] = "euclidean",
         force_exact: bool = False,
         ann_config: AnnConfig | None = None,
@@ -83,7 +86,7 @@ class VinkDB:
             dir_path (str | Path): Directory path to store vector data. Contains the pickled index
                 and SQLite database for vector records.
                 Use ":memory:" for volatile in-memory storage.
-            dim (int): Dimension of the vectors.
+            dim (int): Dimension of the vectors. Must be higher than 16.
             metric (Literal["euclidean", "cosine"], optional): Distance metric to use.
                 Defaults to "euclidean".
             force_exact (bool, optional): If True, only exact calculation is used.
