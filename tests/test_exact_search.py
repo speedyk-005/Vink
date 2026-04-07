@@ -189,5 +189,6 @@ def test_save_load(sample_embeddings, tmp_path):
     assert len(strategy2._all_ids) == 3, f"Expected 3 IDs, got {len(strategy2._all_ids)}"
     assert len(strategy2._all_vectors) == 3, f"Expected 3 vectors, got {len(strategy2._all_vectors)}"
     assert len(strategy2._id_to_idx) == 3, f"Expected 3 id_to_idx entries, got {len(strategy2._id_to_idx)}"
+
     new_ids = [strategy2._bytes_to_uuid_str(id_bytes) for id_bytes in strategy2._all_ids]
     assert set(new_ids) == set(original_ids), "Loaded IDs don't match original IDs"

@@ -76,7 +76,11 @@ def validate_arguments(fn):
     return wrapper
 
 
-def validate_embedding(vecs: list[float] | np.ndarray, metric: str = "euclidean") -> np.ndarray:
+def validate_embedding(
+    vecs: list[float] | np.ndarray,
+    dim: int,
+    metric: str
+) -> np.ndarray:
     """
     Validate and optionally normalize input vectors.
 
@@ -86,7 +90,8 @@ def validate_embedding(vecs: list[float] | np.ndarray, metric: str = "euclidean"
     Args:
         vecs (list[float] | np.ndarray): Input embedding. Accepts 1D arrays of
             shape (d,) or 2D row vectors of shape (1, d).
-        metric (str): Distance metric. Defaults to "euclidean".
+        dim (int): The required dimension for the embedding.
+        metric (str): Distance metric.
 
     Returns:
         np.ndarray: A float32 row vector of shape (1, d). Normalized for cosine,
@@ -108,6 +113,12 @@ def validate_embedding(vecs: list[float] | np.ndarray, metric: str = "euclidean"
     if not (vecs.ndim == 1 or (vecs.ndim == 2 and vecs.shape[0] == 1)):
         raise VectorDimensionError(
             f"Embedding must be (d,) or (1, d). Got shape {vecs.shape}."
+        )
+
+    actual_dim = vecs.shape[-1]
+    if actual_dim != dim:
+        raise VectorDimensionError(
+            f"Dimension mismatch. Expected {dim}, got {actual_dim}."
         )
 
     # Standardize to 2D row vector

@@ -4,6 +4,7 @@ import larch.pickle as pickle
 import numpy as np
 import pytest
 
+from vink.exceptions import DatabaseCorruptedError
 from vink.models import AnnConfig, VectorRecords
 from vink.sql_wrapper import SQLiteWrapper
 from vink.strategies.approximate_search import ApproximateSearch
@@ -143,5 +144,5 @@ def test_main_index_corrupted_wal_missing(approx_search_strategy):
 
     # Load should raise DatabaseCorruptedError
     strategy = _create_bare_approx_strategy(db_path)
-    with pytest.raises(Exception):
+    with pytest.raises(DatabaseCorruptedError):
         strategy.load(overwrite=True)

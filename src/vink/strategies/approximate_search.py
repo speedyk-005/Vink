@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from threading import Thread
 from typing import Literal
 
 import larch.pickle as pickle
@@ -68,13 +69,13 @@ class ApproximateSearch(BaseStrategy):
             metric=metric,
             verbose=verbose,
         )
-        self.metric = self.NANOPQ_METRIC_MAP[metric]
-
+        self._ann_config = ann_config
 
         self._rwlock = rwlock.RWLockFair()
         self._filter_to_sql = FilterToSql()
         self._delta_since_reconfig = 0
-        self._ann_config = ann_config
+        self.is_reconfig = False
+        self.is_compacting = False
 
         self.index: rii.Rii | None = None
 
@@ -104,9 +105,7 @@ class ApproximateSearch(BaseStrategy):
 
         It processes all currently indexed vectors to generate the subspace codebooks
         required for approximate search.
-        The quantizer is initialized with K-means++ ('++') to ensure robust initialization
-        of codebooks across the feature space, improving clustering stability
-        and reconstruction accuracy.
+        The quantizer is trained with randomly sampled vectors.
 
         Args:
             vectors (np.ndarray): A 2D array of shape (N, D) representing the N vectors
@@ -131,12 +130,13 @@ class ApproximateSearch(BaseStrategy):
 
         self.reconfig_threshold = self._ann_config.reconfig_threshold
 
-        # Sample subset for training for codec training
-        max_train_size = 1000
-        n_vectors = len(vectors)
-        if n_vectors > max_train_size:
+        # Sample training vectors for codec training
+        n_vecs = len(vectors)
+        Ks = self._ann_config.codebook_size
+        max_train_size = min(n_vecs, max(Ks * 10, 5000))
+        if n_vecs > max_train_size:
             rng = np.random.default_rng()
-            train_indices = rng.choice(n_vectors, size=max_train_size, replace=False)
+            train_indices = rng.choice(n_vecs, size=max_train_size, replace=False)
             train_vectors = vectors[train_indices]
         else:
             train_vectors = vectors
@@ -149,28 +149,21 @@ class ApproximateSearch(BaseStrategy):
             self._ann_config.codebook_size,
         )
 
-        codec_params = {
-            "M": self._ann_config.num_subspaces,
-            "Ks": self._ann_config.codebook_size,
-            "metric": self.metric,
-            "verbose": False,
-        }
 
-        if self._ann_config.quantizer == "opq":
-            codec = nanopq.OPQ(**codec_params)
+        pq_class = nanopq.PQ if self._ann_config.quantizer == "pq" else nanopq.OPQ
+        codec = pq_class(
+            M=self._ann_config.num_subspaces,
+            Ks=self._ann_config.codebook_size,
+            metric=self.NANOPQ_METRIC_MAP[self.metric],
+            verbose=False,
+        )
 
-            # Use parametric_init=True for rotation optimization. Since our vectors
-            # are normalized, this aligns subspaces with principal components.
-            codec.fit(train_vectors, parametric_init=True, minit="++")
-            indexed_vecs = codec.rotate(vectors)
-        else:
-            codec = nanopq.PQ(**codec_params)
-            codec.fit(train_vectors, minit="++")
-            indexed_vecs = vectors
+        # minit="points" is fast since training vectors are already randomly sampled.
+        codec.fit(train_vectors, minit="points")
 
         # Initialize Rii with the trained codec
         self.index = rii.Rii(fine_quantizer=codec)
-        self.index.add_configure(vecs=indexed_vecs)
+        self.index.add_configure(vecs=vectors)
 
         log_info(self.verbose, "ANN index fit completed successfully.")
 
@@ -188,9 +181,13 @@ class ApproximateSearch(BaseStrategy):
             )
 
     def _do_reconfigure(self) -> None:
-        log_info(self.verbose, "ANN index reconfiguration in progress (this may take a moment)...")
+        """Run index.reconfigure() in background thread."""
+        log_info(self.verbose, "ANN index reconfiguration in progress...")
+
         self.index.reconfigure()
         self._delta_since_reconfig = 0
+        self.is_reconfig = False
+
         log_info(self.verbose, "ANN index reconfigured.")
 
     def _ensure_cache(self) -> None:
@@ -235,12 +232,18 @@ class ApproximateSearch(BaseStrategy):
                 assigned_ids.append(self._bytes_to_uuid_str(record.id))
 
         self.index.add(np.vstack(embeddings))
+
         if not is_buffer:
             self.db.insert(vector_records)
 
         self._delta_since_reconfig += len(vector_records.records)
-        if self._delta_since_reconfig >= self.reconfig_threshold:
-            self._do_reconfigure()
+        if (
+            not (self.is_reconfig or self.is_compacting)
+            and self._delta_since_reconfig >= self.reconfig_threshold
+        ):
+            self.is_reconfig = True
+            thread = Thread(target=self._do_reconfigure, daemon=True)
+            thread.start()
 
         return assigned_ids
 
@@ -308,7 +311,13 @@ class ApproximateSearch(BaseStrategy):
                 # Use cached versions
                 filtered_ids = self.active_ids_arr
 
-            ids, scores = self._query_index(query_vec, filtered_ids, top_k)
+            if self.is_reconfig:
+                # Use linear scan during reconfiguration to avoid inconsistent results
+                # from inverted index being updated in background. Linear is still fast
+                # since it uses ADist on PQ-coded vectors (M table lookups, not full vectors).
+                ids, scores = self._query_index(query_vec, filtered_ids, top_k, method="linear")
+            else:
+                ids, scores = self._query_index(query_vec, filtered_ids, top_k)
 
         if not ids:
             return []
@@ -323,6 +332,8 @@ class ApproximateSearch(BaseStrategy):
 
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
+        self.is_compacting = True
+
         with self._rwlock.gen_wlock():
             active_indices = [i for i, m in enumerate(self._mask) if m]
             if len(active_indices) <= self._ann_config.codebook_size:
@@ -354,6 +365,8 @@ class ApproximateSearch(BaseStrategy):
                     [np.frombuffer(vecs, dtype=np.float32) for vecs in batch]
                 )
                 self.index.add(embeddings)
+
+        self.is_compacting = False
 
     def save(self) -> None:
         """Save the index to disk using double-write strategy for tight syncing."""
@@ -472,16 +485,15 @@ class ApproximateSearch(BaseStrategy):
         if len(target_indices) == 0:
             return [], np.array([])
 
-        # If OPQ is active, the query must be rotated into the same
-        # optimized subspace used during the training phase.
-        if self._ann_config.quantizer == "opq":
-            query_vec = self.index.fine_quantizer.rotate(query_vec)
-
         indices, top_scores = self.index.query(
             query_vec,
             topk=top_k,  # rii index uses topk instead of top_k
             target_ids=target_indices,
         )
         top_ids = [self._all_ids[i] for i in indices]
+
+        if self.metric == "cosine":
+            # Since rii uses ascending order
+            top_scores = 1 - (top_scores/2)
 
         return top_ids, top_scores
