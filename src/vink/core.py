@@ -1,4 +1,5 @@
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Thread
@@ -13,7 +14,7 @@ from vink.exceptions import InvalidInputError, VectorDimensionError
 from vink.models import AnnConfig, VectorRecords
 from vink.sql_wrapper import SQLiteWrapper
 
-# The strategies are lazy imported
+# The strategies and the latency predictor are lazy imported
 
 from vink.strategies.base import BaseStrategy
 from vink.utils.input_validation import (
@@ -52,7 +53,7 @@ class VinkDB:
         >>> config = AnnConfig(
         ...     num_subspaces=16,
         ...     codebook_size=128,
-        ...     switch_exp=1.0,
+        ...     switch_latency_ms=300,
         ...     quantizer="pq"
         ... )
         >>> db = VinkDB(dir_path="./data", dim=384, ann_config=config)
@@ -77,9 +78,9 @@ class VinkDB:
 
         Note:
             The only editable attributes after initialization are:
-                - reconfig_threshold
-                - verbose
+                - ann_config
                 - embedding_callback
+                - verbose
             Everything else is read-only properties.
 
         Args:
@@ -90,7 +91,7 @@ class VinkDB:
             metric (Literal["euclidean", "cosine"], optional): Distance metric to use.
                 Defaults to "euclidean".
             force_exact (bool, optional): If True, only exact calculation is used.
-                If False, switches between exact and ANN based on switch_exp.
+                If False, switches between exact and ANN based on runtime calibration.
                 Defaults to False.
             ann_config (AnnConfig, optional): Configuration for approximate nearest neighbor search.
                 Used during switching and compacting. Defaults to ANNConfig with standard settings.
@@ -112,10 +113,13 @@ class VinkDB:
         self.embedding_callback = embedding_callback
         self.verbose = verbose
 
+        self._strategy: BaseStrategy | None = None
+        self._latency_predictor: 'LatencyPredictor' | None = None
+
         # Default the config with standard settings if force_exact is not true
         if not (self._force_exact or self._ann_config):
             self._ann_config = AnnConfig()
-
+        
         self._validate_config()
 
         if not self._in_memory:
@@ -127,20 +131,20 @@ class VinkDB:
         else:
             self._records_db_path = ":memory:"
 
-        index_config = {
-            "dimension": str(self._dim),
-            "metric": self._metric,
-            "strategy": "exact",
-        }
-        self._records_db = SQLiteWrapper(self._records_db_path, index_config=index_config)
-
-        self._strategy: BaseStrategy | None = None
-        self.load()
+        self._records_db = SQLiteWrapper(
+            self._records_db_path,
+            index_config={
+              "dimension": str(self._dim),
+              "metric": self._metric,
+              "strategy": "exact",
+            }
+        )
 
         # Threading components for ANN auto-switch
         self._ann_building = False
         self._rwlock = rwlock.RWLockFair()
 
+        self.load()
 
     @property
     def dir_path(self) -> Path:
@@ -213,7 +217,7 @@ class VinkDB:
                 raw_vec = self.embedding_callback("vink_warmup_test")
 
                 # This handles casting, shape normalization (1, d), and L2 projection
-                validated_vec = validate_embedding(raw_vec, metric=self._metric)
+                validated_vec = validate_embedding(raw_vec, dim=self.dim, metric=self._metric)
 
                 if validated_vec.shape[-1] != self._dim:
                     raise VectorDimensionError(
@@ -249,6 +253,10 @@ class VinkDB:
         Raises:
             InvalidInputError: If validation fails or if the first batch exceeds 10,000 vectors.
         """
+        if not vector_records:
+            log_info(self.verbose, "Input is empty, returning empty list.")
+            return []
+
         try:
             records = VectorRecords(
                 dim=self.dim,
@@ -257,33 +265,25 @@ class VinkDB:
                 embedding_callback=self.embedding_callback,
             )
         except ValidationError as e:
-            raise InvalidInputError(
-                f"Invalid vector records: {pretty_errors(e)}"
-            ) from None
+            raise InvalidInputError(f"Invalid vector records: {pretty_errors(e)}") from None
 
-        log_info(
-            self.verbose, "Adding {} vector records to index.", len(vector_records)
-        )
+        log_info(self.verbose, "Adding {} vector records to index.", len(vector_records))
+
+        if self._ann_building:
+            assigned_ids = [r.id for r in records.records]
+            self._records_db.insert(records, is_buffer=True)
+            log_info(
+                self.verbose, "Successfully added {} records to buffer.", len(assigned_ids),
+            )
+            return assigned_ids
+
+        assigned_ids = self._strategy.add(records)
 
         if self.strategy == "exact_search":
-            if self._ann_building:
-                assigned_ids = [r.id for r in records.records]
-                self._records_db.insert(records, is_buffer=True)
-                log_info(
-                    self.verbose,
-                    "Successfully added {} records to buffer.",
-                    len(assigned_ids),
-                )
-                return assigned_ids
-
-            assigned_ids = self._strategy.add(records)
-
             # Check if switch should be triggered based on new count
-            if not self._ann_building and self._should_switch():
+            if self._should_switch():
                 self._ann_building = True
                 Thread(target=self._prepare_approx_strategy, daemon=True).start()
-        else:
-            assigned_ids = self._strategy.add(records)
 
         log_info(
             self.verbose, "Successfully added {} records to index.", len(assigned_ids)
@@ -362,6 +362,12 @@ class VinkDB:
             self._strategy = strategy_class(**params)
 
         self._strategy.load(overwrite=overwrite)
+
+        # Lazy init predictor only if strategy is exact
+        if self.strategy == "exact_search":
+            from vink.latency_predictor import LatencyPredictor
+            self._latency_predictor = LatencyPredictor(dim=self._dim)
+
         log_info(self.verbose, "Index loaded successfully.")
 
     @validate_arguments
@@ -394,39 +400,47 @@ class VinkDB:
             self.strategy,
         )
 
-        validated_query = validate_embedding(query_vec, metric=self._metric)
+        start = time.perf_counter()
+
+        validated_query = validate_embedding(query_vec, dim=self.dim, metric=self.metric,)
         results = self._strategy.search(
             validated_query, top_k=top_k, include_vectors=include_vectors, filters=filters
         )
 
-        log_info(self.verbose, "Found {} results for query.", len(results))
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+        # Tune predictor with actual latency
+        if self._latency_predictor is not None:
+            self._latency_predictor.tune(self.count(), elapsed_ms)
+
+        log_info(
+            self.verbose,
+            "Found {} results for query in {} ms.",
+            len(results),
+            round(elapsed_ms, 2)
+        )
         return results
 
     def _should_switch(self) -> bool:
         """
         Check if ANN switch should be triggered based on dual conditions:
-        1. Sufficiency: num_vectors >= min_required (num_subspaces * codebook_size)
-        2. Complexity: (1M / num_vectors) ^ switch_exp < 1.0 triggers switch
 
-        Higher switch_exp values stay exact longer. The sweet spot is 1M elements
-        regardless of dimension (normalized to 1.0 at 1M).
+        1. Sufficiency: num_vectors >= min_required (num_subspaces * codebook_size)
+        2. latency: predicted latency exceeds this threshold
         """
         if self._force_exact:
             return False
 
         n_vecs = self.count()
-        if n_vecs == 0:
-            return False
-
         cfg = self._ann_config
         min_required = cfg.num_subspaces * cfg.codebook_size
 
         if n_vecs < min_required:
             return False
 
-        threshold = 1_000_000  # Sweet spot at 1M elements (normalized regardless of dimension)
-        complexity = (threshold / n_vecs) ** cfg.switch_exp
-        return complexity < 1.0
+        # Use predictor for proactive switching
+        predicted_latency = self._latency_predictor.predict(n_vecs)
+        return predicted_latency >= cfg.switch_latency_ms
 
     def _prepare_approx_strategy(self) -> None:
         """

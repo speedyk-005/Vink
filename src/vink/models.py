@@ -24,9 +24,9 @@ class AnnConfig(BaseModel):
         256,
         description="Number of centroids per subspace. Affects memory usage and search accuracy.",
     )
-    switch_exp: Annotated[float, Field(ge=0.25, le=5)] = Field(
-        1.0,
-        description="Power-law exponent for complexity: values >1.0 stay lower for small data but trigger the ANN switch faster after 1M total operations (D * N).",
+    switch_latency_ms: float = Field(
+        300,
+        description="Switch to ANN when exact search predicted latency exceeds this threshold in milliseconds.",
     )
     reconfig_threshold: Annotated[int, Field(ge=5000)] = Field(
         100_000,
@@ -90,7 +90,7 @@ class VectorRecords(BaseModel):
     """Container for multiple vector records with dimension enforcement."""
 
     dim: int = Field(gt=0, description="The required dimension for all embeddings.")
-    metric: Literal["cosine", "euclidean"] = Field(description="Distance metric for vector normalization.")
+    metric: Literal["cosine", "euclidean"] = Field(description="Distance metric.")
     records: list[VectorRecord] = Field(fail_fast=True)
     embedding_callback: Callable[[str], np.ndarray] | None = Field(
         default=None,
@@ -102,17 +102,16 @@ class VectorRecords(BaseModel):
         """Ensure all embeddings match the specified dimension and normalize if needed."""
         for i, record in enumerate(self.records):
             if record.embedding is None and self.embedding_callback is not None:
-                record.embedding = self.embedding_callback(record.content)
+                record.embedding = validate_embedding(
+                    self.embedding_callback(record.content),
+                    dim=self.dim,
+                    metric=self.metric
+                )
 
             if record.embedding is not None:
-                validated = validate_embedding(record.embedding, metric=self.metric)
-                actual_dim = validated.shape[-1]
-                if actual_dim != self.dim:
-                    raise VectorDimensionError(
-                        f"Dimension mismatch at record[{i}]. "
-                        f"Expected {self.dim}, got {actual_dim}."
-                    )
-                record.embedding = validated
+                record.embedding = validate_embedding(
+                    record.embedding, dim=self.dim, metric=self.metric
+                )
             else:
                 raise InvalidInputError(
                     f"Record[{i}] is missing an embedding and no default callback is set."

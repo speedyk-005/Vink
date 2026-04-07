@@ -26,7 +26,7 @@ def sample_embeddings(request):
     rng = np.random.default_rng(SEED)
     embeddings = rng.standard_normal((1, DIM), dtype=np.float32)
 
-    return validate_embedding(embeddings, metric=metric)
+    return validate_embedding(embeddings, dim=DIM, metric=metric)
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def sample_records(request):
                 "id": generate_id_bytes(),
                 "content": f"test document {i}",
                 "metadata": {"index": i},
-                "embedding": validate_embedding(vec),
+                "embedding": vec,
             }
         )
     return records

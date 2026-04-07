@@ -44,7 +44,7 @@ def test_invalid_id(id_val, match):
         (
             mock_invalid_dim_callback,
             VectorDimensionError,
-            "Embedding callback output dimension",
+            "Dimension mismatch",
         ),
         (mock_crashing_callback, InvalidInputError, "Embedding callback crashed"),
         (
