@@ -1,7 +1,8 @@
-import numpy as np
 import time
-from scipy.optimize import curve_fit
 from collections import deque
+
+import numpy as np
+from scipy.optimize import curve_fit
 
 
 class LatencyPredictor:
@@ -68,7 +69,7 @@ class LatencyPredictor:
             if actual_lat > pred * 2:
                 # Blend: 70% predicted, 30% actual - reduces spike impact
                 actual_lat = pred * 0.7 + actual_lat * 0.3
-        
+
         self.x_buffer.append(n_vecs)
         self.y_buffer.append(max(actual_lat, 1e-4))
 
@@ -77,11 +78,11 @@ class LatencyPredictor:
                 # Bounds keep the 'Physics' sane despite hardware jitter
                 lower_bounds = [1e-10, 0.7]
                 upper_bounds = [0.1, 1.5]
-                
+
                 new_popt, _ = curve_fit(
-                    self._power_law, 
-                    list(self.x_buffer), 
-                    list(self.y_buffer), 
+                    self._power_law,
+                    list(self.x_buffer),
+                    list(self.y_buffer),
                     p0=self._popt,
                     bounds=(lower_bounds, upper_bounds),
                     method='trf',
@@ -114,19 +115,18 @@ if __name__ == "__main__":  # pragma: no cover
     predictor = LatencyPredictor(dim=128)
     print(f"{'Step':<5} | {'N':<7} | {'Pred':<8} | {'Actual':<8} | {'Exp (b)':<5}")
     print("-" * 45)
-    
+
     for i in range(15):
         n = (i + 1) * 10000
         v = np.random.randn(n, 128).astype(np.float32)
         q = np.random.randn(128).astype(np.float32)
-        
+
         p = predictor.predict(n)
         t0 = time.perf_counter()
         predictor._calibration_search(v, q)
         act = (time.perf_counter() - t0) * 1000
-        
+
         print(f"{i+1:<5} | {n:<7} | {p:6.2f}ms | {act:6.2f}ms | {predictor._popt[1]:4.2f}")
         predictor.tune(n, act)
 
     print(f"\nFinal Predict for 200000 vecs: {predictor.predict(200000):.2f}ms")
- 

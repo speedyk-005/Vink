@@ -3,7 +3,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Thread
-from typing import Callable, Literal, Annotated
+from typing import TYPE_CHECKING, Annotated, Callable, Literal
+
+if TYPE_CHECKING:
+    from vink.latency_predictor import LatencyPredictor
 
 import numpy as np
 import regex as re
@@ -15,7 +18,6 @@ from vink.models import AnnConfig, VectorRecords
 from vink.sql_wrapper import SQLiteWrapper
 
 # The strategies and the latency predictor are lazy imported
-
 from vink.strategies.base import BaseStrategy
 from vink.utils.input_validation import (
     pretty_errors,
@@ -114,28 +116,28 @@ class VinkDB:
         self.verbose = verbose
 
         self._strategy: BaseStrategy | None = None
-        self._latency_predictor: 'LatencyPredictor' | None = None
+        self._latency_predictor: "LatencyPredictor" | None = None
 
         # Default the config with standard settings if force_exact is not true
         if not (self._force_exact or self._ann_config):
             self._ann_config = AnnConfig()
-        
+
         self._validate_config()
 
         if not self._in_memory:
-            if overwrite and self._dir_path.exists():
-                shutil.rmtree(self._dir_path)
+            if overwrite and self.dir_path.exists():
+                shutil.rmtree(self.dir_path)
 
-            self._dir_path.mkdir(parents=True, exist_ok=True)
-            self._records_db_path = str(self._dir_path / "records.sqlite")
+            self.dir_path.mkdir(parents=True, exist_ok=True)
+            self._records_db_path = str(self.dir_path / "records.sqlite")
         else:
             self._records_db_path = ":memory:"
 
         self._records_db = SQLiteWrapper(
             self._records_db_path,
             index_config={
-              "dimension": str(self._dim),
-              "metric": self._metric,
+              "dimension": str(self.dim),
+              "metric": self.metric,
               "strategy": "exact",
             }
         )
@@ -217,7 +219,7 @@ class VinkDB:
                 raw_vec = self.embedding_callback("vink_warmup_test")
 
                 # This handles casting, shape normalization (1, d), and L2 projection
-                validated_vec = validate_embedding(raw_vec, dim=self.dim, metric=self._metric)
+                validated_vec = validate_embedding(raw_vec, dim=self.dim, metric=self.metric)
 
                 if validated_vec.shape[-1] != self._dim:
                     raise VectorDimensionError(
