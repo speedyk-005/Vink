@@ -1,6 +1,6 @@
 [project]
 name = "vink"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "Vector Incremental Nano Kit — a lightweight vector database with incremental inserts, automatic exact-to-ANN switching, and explicit storage management. Add vectors anytime without rebuilding the index"
 authors = [
     { name = "speedyk_005", email = "speedy40115719@gmail.com" }
