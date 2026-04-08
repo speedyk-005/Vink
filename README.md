@@ -34,6 +34,7 @@
 - [📦 Installation](#-installation)
   - [The Quick & Easy Way](#the-quick--easy-way)
   - [The From-Source Way](#the-from-source-way)
+- [✅ Proof It Works](#-proof-it-works)
 - [🚀 Usage](#-usage)
   - [Initialization (VinkDB API)](#initialization-vinkdb-api)
     - [AnnConfig (API)](#annconfig-api)
@@ -121,6 +122,44 @@ pip install -e .
 ```
 
 (But honestly, the pip way is usually way easier!)
+
+---
+
+## ✅ Proof It Works
+
+Run the demo to see auto-switch in action:
+
+```bash
+# Install and run anywhere
+curl -O https://raw.githubusercontent.com/speedyk-005/vink/main/demo_poc.py
+python demo_poc.py
+```
+
+The demo uses:
+- `switch_latency_ms=120` (vs 300 default) — triggers switch sooner
+- `dim=128`
+- Batches of 10,000 vectors
+
+The switch happens when latency exceeds `switch_latency_ms`. New vectors are buffered during the switch with zero downtime.
+
+Results vary by hardware and system load — faster machines switch later, and running other programs will affect timing.
+
+Example output:
+
+```
+┏━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┓
+┃ Vectors ┃      Strategy      ┃ Avg Query (ms) ┃ Insert Time (s) ┃     Status     ┃
+┡━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━┩
+│ 10,000  │    exact_search    │     32.486     │      0.806      │  Exact Search  │
+│ 20,000  │    exact_search    │     79.690     │      0.729      │  Exact Search  │
+│ 30,000  │    exact_search    │    107.419     │      0.720      │  Exact Search  │
+│ 40,000  │    exact_search    │    188.063     │      0.771      │  ⚙ Building ANN │
+│ 50,000  │ approximate_search │     0.000      │     10.051      │  ✓ ANN Active  │
+│ 60,000  │ approximate_search │    155.239     │      1.323      │  ✓ ANN Active  │
+└─────────┴────────────────────┴────────────────┴─────────────────┴────────────────┘
+
+✓ ANN switch successfully triggered!
+```
 
 ---
 
@@ -327,3 +366,4 @@ Bug fixes, features, docs — all welcome. Check out [CONTRIBUTING.md](https://g
 Check out the [LICENSE](https://github.com/speedyk-005/vink/blob/main/LICENSE) file for all the details.
 
 > MIT License. Use freely, modify boldly, and credit appropriately! (We're not that legendary... yet 😉)
+

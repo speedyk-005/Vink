@@ -18,7 +18,7 @@ from vink import AnnConfig, VinkDB
 console = Console()
 
 DIM = 128
-MAX_VECTORS = 100_000
+MAX_VECTORS = 75_000
 BATCH_SIZE = 10_000
 MIN_REQUIRED = 32 * 256  # num_subspaces × codebook_size
 SWITCH_LATENCY_MS = 120

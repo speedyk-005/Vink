@@ -65,11 +65,16 @@ Hey! Thanks for thinking about contributing. Bug fixes, features, docs — all w
 
 4. **Format and lint:** Run `ruff format && ruff check --fix` before committing.
 
-5. **Build documentation (if you've made docs changes):** This project uses python-docstring-markdown for API documentation.
+5. **Build documentation:**
 
     ```bash
     pip install -e ".[dev]"
+    
+    # Generate API_REFERENCES.md from docstrings
     python -m python_docstring_markdown ./src/vink API_REFERENCES.md
+    
+    # Generate/update README TOC (GitHub-compatible)
+    npx doctoc --github README.md
     ```
 
 ## Pull Request Template
