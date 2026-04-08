@@ -4,7 +4,12 @@
   <img src="https://github.com/speedyk-005/vink/blob/main/vink_logo.png?raw=true" alt="Vink Logo" width="300"/>
 </p>
 
-“Vector DB that self-organize. Auto-switch, Auto-tune, Auto-scale.”
+<p align="center">
+  <b>V</b>ector <b>In</b>cremental <b>N</b>ano <b>K</b>it
+</p>
+<p align="center">
+  “Vector DB that self-organize. Auto-switch, Auto-tune, Auto-scale.”
+</p>
 
 [![Python Version](https://img.shields.io/badge/Python-3.9%20--%203.14-blue)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/vink)](https://pypi.org/project/vink)
@@ -21,27 +26,38 @@
 
 ## Table of Contents
 
-- [So What's vink Anyway?](#so-whats-vink)
-- [Installation](#installation)
-- [Usage](#usage)
-  - [Initialization](#initialization)
-  - [Add](#add)
-  - [Search](#search)
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [🤔 So What's vink Anyway? (And Why Should You Care?)](#-so-whats-vink-anyway-and-why-should-you-care)
+- [📦 Installation](#-installation)
+  - [The Quick & Easy Way](#the-quick--easy-way)
+  - [The From-Source Way](#the-from-source-way)
+- [🚀 Usage](#-usage)
+  - [Initialization (VinkDB API)](#initialization-vinkdb-api)
+    - [AnnConfig (API)](#annconfig-api)
+  - [Add (API)](#add-api)
+    - [With embedding callback](#with-embedding-callback)
+    - [Without callback](#without-callback)
+  - [Search (API)](#search-api)
     - [Without filters](#without-filters)
     - [With filters](#with-filters)
   - [Delete](#delete)
-    - [Soft deletion](#soft-deletion)
-    - [Compaction](#compaction)
-  - [Stats](#stats)
-- [Exceptions](#-exceptions)
-- [Features & Roadmap](#-features--roadmap)
-- [Core Dependencies](#core-dependencies)
-- [Contributing](#contributing)
-- [License](#license)
+    - [Soft deletion (API)](#soft-deletion-api)
+    - [Compaction (API)](#compaction-api)
+  - [Stats (API)](#stats-api)
+- [🚨 Exceptions (API)](#-exceptions-api)
+- [🗺 Features & Roadmap](#-features--roadmap)
+- [🔧 Core Dependencies](#-core-dependencies)
+- [🤝 Contributing](#-contributing)
+- [📜 License](#-license)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ---
 
-## 🤔 So What's vink Anyway? (And Why Should You Care?) {#so-whats-vink}
+## 🤔 So What's vink Anyway? (And Why Should You Care?)
 
 Most vector databases force a trade-off: you either over-engineer for small datasets or hit a performance cliff as you scale. You’re left babysitting indices, manually tuning parameters, and praying your hardware can keep up.
 

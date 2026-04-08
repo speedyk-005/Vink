@@ -2,12 +2,13 @@
 name = "vink"
 version = "0.1.0"
 description = "Vector Incremental Nano Kit — a lightweight vector database with incremental inserts, automatic exact-to-ANN switching, and explicit storage management. Add vectors anytime without rebuilding the index"
-keywords = ["vector-database", "ann", "approximate-nearest-neighbor", "similarity-search", "embedding-vectors", "semantic-search", "rag", "retrieval-augmented-generation", "llm", "generative-ai", "product-quantization", "vector-search", "ai", "information-retrieval", "knowledge-base"]
-requires-python = ">=3.9"
-license = { text = "MIT" }
 authors = [
     { name = "speedyk_005", email = "speedy40115719@gmail.com" }
 ]
+
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.9"
 
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -22,6 +23,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+
+keywords = ["vector-database", "ann", "approximate-nearest-neighbor", "similarity-search", "embedding-vectors", "semantic-search", "rag", "retrieval-augmented-generation", "llm", "generative-ai", "product-quantization", "vector-search", "ai", "information-retrieval", "knowledge-base"]
 
 dependencies = [
     # rii requires pybind11>=2.9, but newer versions (3.x) build significantly faster.
