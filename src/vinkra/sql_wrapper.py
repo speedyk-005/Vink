@@ -3,8 +3,8 @@ import sqlite3
 from importlib.metadata import PackageNotFoundError, version
 from typing import Generator, Literal
 
-from vink.models import VectorRecords
-from vink.utils.input_validation import validate_arguments
+from vinkra.models import VectorRecords
+from vinkra.utils.input_validation import validate_arguments
 
 if sqlite3.sqlite_version_info < (3, 45, 0):
     try:
@@ -16,13 +16,13 @@ if sqlite3.sqlite_version_info < (3, 45, 0):
         ) from None
 
 try:
-    __version__ = version("vink")
+    __version__ = version("vinkra")
 except PackageNotFoundError:
     __version__ = "0.0.0"
 
 
 class SQLiteWrapper:
-    """Central SQLite connection and schema management for VinkDB."""
+    """Central SQLite connection and schema management for VinkraDB."""
 
     @validate_arguments
     def __init__(self, path: str, index_config: dict):

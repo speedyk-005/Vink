@@ -1,22 +1,22 @@
-# 🐦 Vink
+# 🐦 Vinkra
 
 <p align="center">
-  <img src="https://github.com/speedyk-005/vink/blob/main/vink_logo.png?raw=true" alt="Vink Logo" width="300"/>
+  <img src="https://github.com/speedyk-005/vinkra/blob/main/vinkra_logo.svg?raw=true" alt="Vinkra Logo" width="300"/>
 </p>
 
 <p align="center">
-  <b>V</b>ector <b>In</b>cremental <b>N</b>ano <b>K</b>it
+  <b>V</b>ector <b>In</b>cremental <b>N</b>ano <b>K</b>it — <b>R</b>econfigurated <b>A</b>utomatically
 </p>
 <p align="center">
   “Vector DB that self-organize. Auto-switch, Auto-tune, Auto-scale.”
 </p>
 
 [![Python Version](https://img.shields.io/badge/Python-3.9%20--%203.14-blue)](https://www.python.org/downloads/)
-[![PyPI](https://img.shields.io/pypi/v/vink)](https://pypi.org/project/vink)
-[![CodeFactor](https://www.codefactor.io/repository/github/speedyk-005/vink/badge)](https://www.codefactor.io/repository/github/speedyk-005/vink)
-[![Coverage Status](https://coveralls.io/repos/github/speedyk-005/vink/badge.svg?branch=main)](https://coveralls.io/github/speedyk-005/vink?branch=main)
-[![Stability](https://img.shields.io/badge/stability-pre--alpha-yellow)](https://github.com/speedyk-005/vink)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/speedyk-005/vink/actions)
+[![PyPI](https://img.shields.io/pypi/v/vinkra)](https://pypi.org/project/vinkra)
+[![CodeFactor](https://www.codefactor.io/repository/github/speedyk-005/vinkra/badge)](https://www.codefactor.io/repository/github/speedyk-005/vinkra)
+[![Coverage Status](https://coveralls.io/repos/github/speedyk-005/vinkra/badge.svg?branch=main)](https://coveralls.io/github/speedyk-005/vinkra?branch=main)
+[![Stability](https://img.shields.io/badge/stability-pre--alpha-yellow)](https://github.com/speedyk-005/vinkra)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/speedyk-005/vinkra/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 > [!WARNING]
@@ -30,13 +30,13 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
-- [🤔 So What's vink Anyway? (And Why Should You Care?)](#-so-whats-vink-anyway-and-why-should-you-care)
+- [🤔 So What's vinkra Anyway? (And Why Should You Care?)](#-so-whats-vinkra-anyway-and-why-should-you-care)
 - [📦 Installation](#-installation)
   - [The Quick & Easy Way](#the-quick--easy-way)
   - [The From-Source Way](#the-from-source-way)
 - [✅ Proof It Works](#-proof-it-works)
 - [🚀 Usage](#-usage)
-  - [Initialization (VinkDB API)](#initialization-vinkdb-api)
+  - [Initialization (VinkraDB API)](#initialization-vinkradb-api)
     - [AnnConfig (API)](#annconfig-api)
   - [Add (API)](#add-api)
     - [With embedding callback](#with-embedding-callback)
@@ -58,7 +58,7 @@
 
 ---
 
-## 🤔 So What's vink Anyway? (And Why Should You Care?)
+## 🤔 So What's vinkra Anyway? (And Why Should You Care?)
 
 Most vector databases force a trade-off: you either over-engineer for small datasets or hit a performance cliff as you scale. You’re left babysitting indices, manually tuning parameters, and praying your hardware can keep up.
 
@@ -108,7 +108,7 @@ First ensure that you have the necessary system dependencies installed.
 The simplest way to get started is with pip:
 
 ```bash
-pip install vink
+pip install vinkra
 ```
 
 ### The From-Source Way
@@ -116,8 +116,8 @@ pip install vink
 Prefer building from source? You can clone and install manually for full control:
 
 ```bash
-git clone https://github.com/speedyk-005/vink.git
-cd vink
+git clone https://github.com/speedyk-005/vinkra.git
+cd vinkra
 pip install -e .
 ```
 
@@ -131,7 +131,7 @@ Run the demo to see auto-switch in action:
 
 ```bash
 # Install and run anywhere
-curl -O https://raw.githubusercontent.com/speedyk-005/vink/main/demo_poc.py
+curl -O https://raw.githubusercontent.com/speedyk-005/vinkra/main/demo_poc.py
 python demo_poc.py
 ```
 
@@ -165,19 +165,19 @@ Example output:
 
 ## 🚀 Usage
 
-### Initialization ([VinkDB API](https://github.com/speedyk-005/vink/blob/main/API_REFERENCES.md#vink-core-VinkDB))
+### Initialization ([VinkraDB API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB))
 
 ```python
-from vink import VinkDB
+from vinkra import VinkraDB
 
 # Create a database with 128-dimensional vectors
-db = VinkDB("./data", dim=128)
+db = VinkraDB("./data", dim=128)
 
 # Or use in-memory mode (no persistence)
-db = VinkDB(":memory:", dim=128)
+db = VinkraDB(":memory:", dim=128)
 
 # With custom settings
-db = VinkDB(
+db = VinkraDB(
     dir_path="./data",
     dim=384,
     metric="euclidean",       # or "cosine" (default: euclidean)
@@ -190,25 +190,25 @@ db = VinkDB(
 )
 ```
 
-#### AnnConfig ([API](https://github.com/speedyk-005/vink/blob/main/API_REFERENCES.md#vink-models-AnnConfig))
+#### AnnConfig ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-models-AnnConfig))
 
 Want custom ANN settings?
 
 ```python
-from vink import AnnConfig
+from vinkra import AnnConfig
 
 config = AnnConfig(
     num_subspaces=16,        # number of sub-vectors (default: 32)
     quantizer="pq",           # "pq" or "opq" (default: pq)
     codebook_size=128,        # centroids per subspace (default: 256)
 )
-db = VinkDB("./data", dim=384, ann_config=config)
+db = VinkraDB("./data", dim=384, ann_config=config)
 
 # print all available options:
 AnnConfig.help()
 ```
 
-### Add ([API](https://github.com/speedyk-005/vink/blob/main/API_REFERENCES.md#vink-core-VinkDB-add))
+### Add ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-add))
 
 Records need:
 
@@ -222,7 +222,7 @@ Provide embeddings directly or use a callback to generate them on the fly.
 #### With embedding callback
 
 ```python
-db = VinkDB("./data", dim=384, embedding_callback=my_embedding_fn)
+db = VinkraDB("./data", dim=384, embedding_callback=my_embedding_fn)
 
 # Just provide content — embeddings generated automatically
 db.add([
@@ -242,7 +242,7 @@ db.add([
 )]
 ```
 
-### Search ([API](https://github.com/speedyk-005/vink/blob/main/API_REFERENCES.md#vink-core-VinkDB-search))
+### Search ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-search))
 
 Results include:
 
@@ -275,7 +275,7 @@ results = db.search(
 
 ### Delete
 
-#### Soft deletion ([API](https://github.com/speedyk-005/vink/blob/main/API_REFERENCES.md#vink-core-VinkDB-soft_delete))
+#### Soft deletion ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-soft_delete))
 
 Soft-delete vectors by ID without rebuilding the index — fast and efficient.
 
@@ -284,7 +284,7 @@ Soft-delete vectors by ID without rebuilding the index — fast and efficient.
 db.soft_delete(["0192a5b4-7f3c-7d6e-9a1b-2c3d4e5f6a7b", "0192a5b4-7f3c-7d6e-9a1b-2c3d4e5f6a7c"])
 ```
 
-#### Compaction ([API](https://github.com/speedyk-005/vink/blob/main/API_REFERENCES.md#vink-core-VinkDB-compact))
+#### Compaction ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-compact))
 
 Actually remove soft-deleted records and reclaim storage:
 
@@ -295,7 +295,7 @@ db.compact()
 > [!WARNING]
 > Can take 20-200+ seconds with `approximate strategy` depending on data size. Run during maintenance windows or off-peak hours. If not enough vectors remain to retrain the codec, rebuild is skipped.
 
-### Stats ([API](https://github.com/speedyk-005/vink/blob/main/API_REFERENCES.md#vink-core-VinkDB-stats))
+### Stats ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-stats))
 
 Get database statistics:
 
@@ -315,7 +315,7 @@ stats = db.stats()
 
 ---
 
-## 🚨 Exceptions ([API](https://github.com/speedyk-005/vink/blob/main/API_REFERENCES.md#vink-exceptions))
+## 🚨 Exceptions ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-exceptions))
 
 Something go wrong?
 
@@ -357,13 +357,13 @@ Something go wrong?
 
 ## 🤝 Contributing
 
-Bug fixes, features, docs — all welcome. Check out [CONTRIBUTING.md](https://github.com/speedyk-005/vink/blob/main/CONTRIBUTING.md) for the full details.
+Bug fixes, features, docs — all welcome. Check out [CONTRIBUTING.md](https://github.com/speedyk-005/vinkra/blob/main/CONTRIBUTING.md) for the full details.
 
 ---
 
 ## 📜 License
 
-Check out the [LICENSE](https://github.com/speedyk-005/vink/blob/main/LICENSE) file for all the details.
+Check out the [LICENSE](https://github.com/speedyk-005/vinkra/blob/main/LICENSE) file for all the details.
 
 > MIT License. Use freely, modify boldly, and credit appropriately! (We're not that legendary... yet 😉)
 

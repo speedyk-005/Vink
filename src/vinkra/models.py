@@ -4,9 +4,9 @@ import numpy as np
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic.fields import PydanticUndefined
 
-from vink.exceptions import InvalidInputError, VectorDimensionError
-from vink.utils.id_generation import generate_id_bytes
-from vink.utils.input_validation import validate_embedding, validate_id
+from vinkra.exceptions import InvalidInputError, VectorDimensionError
+from vinkra.utils.id_generation import generate_id_bytes
+from vinkra.utils.input_validation import validate_embedding, validate_id
 
 
 class AnnConfig(BaseModel):

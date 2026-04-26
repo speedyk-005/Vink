@@ -5,34 +5,33 @@ from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, Annotated, Callable, Literal
 
-if TYPE_CHECKING:
-    from vink.latency_predictor import LatencyPredictor
+from vinkra.latency_predictor import LatencyPredictor
 
 import numpy as np
 import regex as re
 from pydantic import Field, ValidationError
 from readerwriterlock import rwlock
 
-from vink.exceptions import InvalidInputError, VectorDimensionError
-from vink.models import AnnConfig, VectorRecords
-from vink.sql_wrapper import SQLiteWrapper
+from vinkra.exceptions import InvalidInputError, VectorDimensionError
+from vinkra.models import AnnConfig, VectorRecords
+from vinkra.sql_wrapper import SQLiteWrapper
 
 # The strategies and the latency predictor are lazy imported
-from vink.strategies.base import BaseStrategy
-from vink.utils.input_validation import (
+from vinkra.strategies.base import BaseStrategy
+from vinkra.utils.input_validation import (
     pretty_errors,
     validate_arguments,
     validate_embedding,
     validate_id,
 )
-from vink.utils.logging import log_info, logger
+from vinkra.utils.logging import log_info, logger
 
 
-class VinkDB:
+class VinkraDB:
     """
     Vector database with hybrid exact/approximate nearest neighbor search.
 
-    VinkDB automatically switches from exact brute-force search to approximate
+    VinkraDB automatically switches from exact brute-force search to approximate
     nearest neighbor (ANN) search based on dataset size, using Reconfigurable Inverted
     Index (RII) and Product Quantization (PQ) for efficient ANN.
 
@@ -42,23 +41,24 @@ class VinkDB:
     Features:
 
         - Hybrid search: exact for small datasets, ANN for large datasets.
-        - Automatic strategy switching based on runtime-calibrated latency prediction.
+        - Automatic strategy reconfig based on runtime-calibrated latency prediction.
         - Normalized embeddings for consistent distance metrics.
         - Supports Euclidean (L2) and cosine (dot) product similarity.
         - Soft deletes: efficient deletion without data reorganization.
 
-    Getting ANNConfig:
+    Getting AnnConfig:
 
-        To customize ANN behavior, create an ANNConfig instance:
+        To customize ANN behavior, create an AnnConfig instance:
 
-        >>> from vink import AnnConfig
+        >>> from vinkra import AnnConfig
         >>> config = AnnConfig(
         ...     num_subspaces=16,
         ...     codebook_size=128,
         ...     switch_latency_ms=300,
         ...     quantizer="pq"
         ... )
-        >>> db = VinkDB(dir_path="./data", dim=384, ann_config=config)
+
+        >>> db = VinkraDB(dir_path="./data", dim=384, ann_config=config)
 
         For help with AnnConfig parameters, call AnnConfig.help()
     """
@@ -76,7 +76,7 @@ class VinkDB:
         verbose: bool = False,
     ) -> None:
         """
-        Initialize a VinkDB instance.
+        Initialize a VinkraDB instance.
 
         Note:
             The only editable attributes after initialization are:
@@ -216,7 +216,7 @@ class VinkDB:
         # Callback Handshake validation
         if self.embedding_callback:
             try:
-                raw_vec = self.embedding_callback("vink_warmup_test")
+                raw_vec = self.embedding_callback("vinkra_warmup_test")
 
                 # This handles casting, shape normalization (1, d), and L2 projection
                 validated_vec = validate_embedding(raw_vec, dim=self.dim, metric=self.metric)
@@ -224,7 +224,7 @@ class VinkDB:
                 if validated_vec.shape[-1] != self._dim:
                     raise VectorDimensionError(
                         f"Embedding callback output dimension ({validated_vec.shape[-1]}) "
-                        f"does not match VinkDB dimension ({self._dim})."
+                        f"does not match VinkraDB dimension ({self._dim})."
                     )
             except (VectorDimensionError, InvalidInputError):
                 # Let these specific errors bubble up for the test/user
@@ -354,10 +354,10 @@ class VinkDB:
                 "verbose": self.verbose,
             }
             if self.strategy == "exact_search":
-                from vink.strategies.exact_search import ExactSearch
+                from vinkra.strategies.exact_search import ExactSearch
                 strategy_class = ExactSearch
             else:
-                from vink.strategies.approximate_search import ApproximateSearch
+                from vinkra.strategies.approximate_search import ApproximateSearch
                 strategy_class = ApproximateSearch
                 params["ann_config"] = self._ann_config
 
@@ -367,7 +367,7 @@ class VinkDB:
 
         # Lazy init predictor only if strategy is exact
         if self.strategy == "exact_search":
-            from vink.latency_predictor import LatencyPredictor
+            from vinkra.latency_predictor import LatencyPredictor
             self._latency_predictor = LatencyPredictor(dim=self._dim)
 
         log_info(self.verbose, "Index loaded successfully.")
@@ -455,7 +455,7 @@ class VinkDB:
         vectors = self._strategy.active_vectors_arr
         ids = self._strategy.active_ids_arr
 
-        from vink.strategies.approximate_search import ApproximateSearch
+        from vinkra.strategies.approximate_search import ApproximateSearch
 
         approx_strategy = ApproximateSearch(
             db=self._records_db,
@@ -509,7 +509,7 @@ class VinkDB:
             len(records),
         )
 
-    def __enter__(self) -> "VinkDB":
+    def __enter__(self) -> "VinkraDB":
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:

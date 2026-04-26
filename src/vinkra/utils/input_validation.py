@@ -5,7 +5,7 @@ from uuid import UUID
 import numpy as np
 from pydantic import ConfigDict, ValidationError, validate_call
 
-from vink.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError
+from vinkra.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError
 
 
 def pretty_errors(error: ValidationError) -> str:

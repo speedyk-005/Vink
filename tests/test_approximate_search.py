@@ -4,10 +4,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vink.models import AnnConfig, VectorRecords
-from vink.sql_wrapper import SQLiteWrapper
-from vink.strategies.approximate_search import ApproximateSearch
-from vink.utils.id_generation import generate_id_bytes
+from vinkra.models import AnnConfig, VectorRecords
+from vinkra.sql_wrapper import SQLiteWrapper
+from vinkra.strategies.approximate_search import ApproximateSearch
+from vinkra.utils.id_generation import generate_id_bytes
 
 IDS_TO_DELETE = []
 

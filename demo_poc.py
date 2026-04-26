@@ -13,7 +13,7 @@ import numpy as np
 from rich.console import Console
 from rich.table import Table
 
-from vink import AnnConfig, VinkDB
+from vinkra import AnnConfig, VinkraDB
 
 console = Console()
 
@@ -55,7 +55,7 @@ def demonstrate_automatic_switch():
     config = AnnConfig(
         switch_latency_ms=SWITCH_LATENCY_MS,
     )
-    db = VinkDB(dir_path=":memory:", dim=DIM, ann_config=config, verbose=True)
+    db = VinkraDB(dir_path=":memory:", dim=DIM, ann_config=config, verbose=True)
 
     count = 0
     ann_switched = False

@@ -4,11 +4,11 @@ import larch.pickle as pickle
 import numpy as np
 import pytest
 
-from vink.exceptions import DatabaseCorruptedError
-from vink.models import AnnConfig, VectorRecords
-from vink.sql_wrapper import SQLiteWrapper
-from vink.strategies.approximate_search import ApproximateSearch
-from vink.utils.id_generation import generate_id_bytes
+from vinkra.exceptions import DatabaseCorruptedError
+from vinkra.models import AnnConfig, VectorRecords
+from vinkra.sql_wrapper import SQLiteWrapper
+from vinkra.strategies.approximate_search import ApproximateSearch
+from vinkra.utils.id_generation import generate_id_bytes
 
 DB_PATH = "records.sqlite"
 

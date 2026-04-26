@@ -1,7 +1,7 @@
 # TODO: Use the third party regex ibstead
 import re
 
-from vink.exceptions import FilterError
+from vinkra.exceptions import FilterError
 
 
 class FilterToSql:

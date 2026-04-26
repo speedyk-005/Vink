@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from vink import VinkDB
-from vink.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError
-from vink.models import VectorRecord, VectorRecords
+from vinkra import VinkraDB
+from vinkra.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError
+from vinkra.models import VectorRecord, VectorRecords
 
 
 def mock_embedding_callback(text: str) -> np.ndarray:
@@ -56,22 +56,22 @@ def test_invalid_id(id_val, match):
     ],
 )
 def test_vinkdb_init_handshake(callback, expected_exc, match, tmp_path):
-    """Test the embedding_callback handshake during VinkDB initialization."""
+    """Test the embedding_callback handshake during VinkraDB initialization."""
     if expected_exc:
         with pytest.raises(expected_exc, match=match):
-            db = VinkDB(dir_path=tmp_path, dim=128, embedding_callback=callback)
+            db = VinkraDB(dir_path=tmp_path, dim=128, embedding_callback=callback)
             if not callback:
                 db.add([{"content": "test"}])
     else:
         # Should initialize without error
-        db = VinkDB(dir_path=tmp_path, dim=128, embedding_callback=callback)
+        db = VinkraDB(dir_path=tmp_path, dim=128, embedding_callback=callback)
         assert db.embedding_callback == callback
 
 
 def test_vinkdb_lazy_embedding(tmp_path):
-    """Test that VinkDB uses the callback to populate missing embeddings in add()."""
+    """Test that VinkraDB uses the callback to populate missing embeddings in add()."""
     dim = 128
-    db = VinkDB(dir_path=tmp_path, dim=dim, embedding_callback=mock_embedding_callback)
+    db = VinkraDB(dir_path=tmp_path, dim=dim, embedding_callback=mock_embedding_callback)
 
     # Record missing the 'embedding' key
     records = [{"content": "hello world"}]
@@ -123,7 +123,7 @@ def test_dimension_mismatch():
 
 def test_ann_config_validate_vector_dim():
     """Test that AnnConfig.validate_vector_dim catches invalid configurations."""
-    from vink.models import AnnConfig
+    from vinkra.models import AnnConfig
 
     # num_subspaces > dim
     config = AnnConfig(num_subspaces=256, codebook_size=8)

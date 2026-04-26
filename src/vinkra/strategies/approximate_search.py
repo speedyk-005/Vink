@@ -9,16 +9,16 @@ import numpy as np
 import rii
 from readerwriterlock import rwlock
 
-from vink.exceptions import (
+from vinkra.exceptions import (
     DatabaseCorruptedError,
     IndexNotFittedError,
     InvalidInputError,
 )
-from vink.filter_parser import FilterToSql
-from vink.models import AnnConfig
-from vink.sql_wrapper import SQLiteWrapper
-from vink.strategies.base import BaseStrategy
-from vink.utils.logging import log_info, logger
+from vinkra.filter_parser import FilterToSql
+from vinkra.models import AnnConfig
+from vinkra.sql_wrapper import SQLiteWrapper
+from vinkra.strategies.base import BaseStrategy
+from vinkra.utils.logging import log_info, logger
 
 
 class ApproximateSearch(BaseStrategy):

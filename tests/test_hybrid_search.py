@@ -2,19 +2,19 @@ import time
 
 import pytest
 
-from vink import VinkDB
-from vink.models import AnnConfig
+from vinkra import VinkraDB
+from vinkra.models import AnnConfig
 
 DIM = 128
 
 
 @pytest.fixture
 def vinkdb(tmp_path, request, mocker):
-    """Create a VinkDB instance for testing."""
+    """Create a VinkraDB instance for testing."""
     params = getattr(request, "param", {})
     force_exact = params.get("force_exact", False)
 
-    db = VinkDB(
+    db = VinkraDB(
         dir_path=tmp_path,
         dim=DIM,
         force_exact=force_exact,

@@ -6,8 +6,8 @@ from uuid import UUID
 
 import numpy as np
 
-from vink.models import VectorRecords
-from vink.sql_wrapper import SQLiteWrapper
+from vinkra.models import VectorRecords
+from vinkra.sql_wrapper import SQLiteWrapper
 
 
 class BaseStrategy(ABC):
