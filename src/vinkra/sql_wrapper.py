@@ -220,6 +220,5 @@ class SQLiteWrapper:
         """Set a metadata value in db_meta table."""
         cursor = self._conn.cursor()
         cursor.execute(
-            "INSERT OR REPLACE INTO db_meta (key, value) VALUES (?, ?)",
-            (key, value)
+            "INSERT OR REPLACE INTO db_meta (key, value) VALUES (?, ?)", (key, value)
         )

@@ -38,7 +38,9 @@ def test_switch_triggers(vinkdb, sample_records, mocker):
     mocker.patch.object(vinkdb, "_should_switch", return_value=True)
     vinkdb.add(sample_records[7:])
 
-    assert vinkdb._ann_building is True, "Rerun test - ANN build may complete too fast to catch"
+    assert vinkdb._ann_building is True, (
+        "Rerun test - ANN build may complete too fast to catch"
+    )
 
     # Poll until build completes
     timeout = 5
@@ -69,4 +71,6 @@ def test_search_with_filter(vinkdb, sample_records):
     query_embedding = sample_records[0]["embedding"]
     results = vinkdb.search(query_embedding, top_k=4, filters=["category == 'tech'"])
 
-    assert all(r["metadata"]["category"] == "tech" for r in results), "All results should have category=tech"
+    assert all(r["metadata"]["category"] == "tech" for r in results), (
+        "All results should have category=tech"
+    )

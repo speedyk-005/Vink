@@ -71,7 +71,9 @@ def test_vinkdb_init_handshake(callback, expected_exc, match, tmp_path):
 def test_vinkdb_lazy_embedding(tmp_path):
     """Test that VinkraDB uses the callback to populate missing embeddings in add()."""
     dim = 128
-    db = VinkraDB(dir_path=tmp_path, dim=dim, embedding_callback=mock_embedding_callback)
+    db = VinkraDB(
+        dir_path=tmp_path, dim=dim, embedding_callback=mock_embedding_callback
+    )
 
     # Record missing the 'embedding' key
     records = [{"content": "hello world"}]
@@ -100,12 +102,16 @@ def test_embedding_validation(embedding, exc_type):
     if exc_type:
         with pytest.raises(exc_type):
             VectorRecords(
-                dim=128, metric="cosine", records=[{"content": "test", "embedding": embedding}]
+                dim=128,
+                metric="cosine",
+                records=[{"content": "test", "embedding": embedding}],
             )
     else:
         # Should not raise any exception
         records = VectorRecords(
-            dim=128, metric="cosine", records=[{"content": "test", "embedding": embedding}]
+            dim=128,
+            metric="cosine",
+            records=[{"content": "test", "embedding": embedding}],
         )
         assert records.records[0].embedding.shape == (1, 128)
         assert np.isclose(np.linalg.norm(records.records[0].embedding), 1.0)
@@ -117,7 +123,9 @@ def test_dimension_mismatch():
     embedding = np.random.rand(10)
     with pytest.raises(VectorDimensionError):
         VectorRecords(
-            dim=expected_dim, metric="cosine", records=[{"content": "test", "embedding": embedding}]
+            dim=expected_dim,
+            metric="cosine",
+            records=[{"content": "test", "embedding": embedding}],
         )
 
 

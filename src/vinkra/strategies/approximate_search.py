@@ -149,7 +149,6 @@ class ApproximateSearch(BaseStrategy):
             self._ann_config.codebook_size,
         )
 
-
         pq_class = nanopq.PQ if self._ann_config.quantizer == "pq" else nanopq.OPQ
         codec = pq_class(
             M=self._ann_config.num_subspaces,
@@ -304,7 +303,9 @@ class ApproximateSearch(BaseStrategy):
                     params=params,
                 )
                 match_set = {row[0] for row in rows}
-                filtered_mask = np.array([uid in match_set for uid in self.active_ids_arr])
+                filtered_mask = np.array(
+                    [uid in match_set for uid in self.active_ids_arr]
+                )
 
                 filtered_ids = self.active_ids_arr[filtered_mask]
             else:
@@ -315,7 +316,9 @@ class ApproximateSearch(BaseStrategy):
                 # Use linear scan during reconfiguration to avoid inconsistent results
                 # from inverted index being updated in background. Linear is still fast
                 # since it uses ADist on PQ-coded vectors (M table lookups, not full vectors).
-                ids, scores = self._query_index(query_vec, filtered_ids, top_k, method="linear")
+                ids, scores = self._query_index(
+                    query_vec, filtered_ids, top_k, method="linear"
+                )
             else:
                 ids, scores = self._query_index(query_vec, filtered_ids, top_k)
 
@@ -349,7 +352,9 @@ class ApproximateSearch(BaseStrategy):
 
             self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
             self._all_ids = self.active_ids_arr.tolist()
-            self._id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)}
+            self._id_to_idx = {
+                id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)
+            }
             self._mask = [True] * len(self._all_ids)
 
             gen = self.db.iter_embeddings()
@@ -412,7 +417,9 @@ class ApproximateSearch(BaseStrategy):
 
             self._all_ids = [row[0] for row in rows]
             self._mask = [bool(row[1]) for row in rows]
-            self._id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)}
+            self._id_to_idx = {
+                id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)
+            }
 
             self._safe_load_ann_index()
 
@@ -431,7 +438,9 @@ class ApproximateSearch(BaseStrategy):
 
         except (pickle.UnpicklingError, EOFError, AttributeError, AssertionError):
             # Recover from partial save
-            log_info(self.verbose, "Partial save detected... Recovering from backup file")
+            log_info(
+                self.verbose, "Partial save detected... Recovering from backup file"
+            )
 
             try:
                 with open(self._ann_index_wal_path, "rb") as f:
@@ -451,11 +460,20 @@ class ApproximateSearch(BaseStrategy):
 
             # Rare cases
             except FileNotFoundError as e:
-                raise DatabaseCorruptedError("Index recovery failed - backup file not found") from e
+                raise DatabaseCorruptedError(
+                    "Index recovery failed - backup file not found"
+                ) from e
 
-            except (pickle.UnpicklingError, EOFError, AttributeError, AssertionError) as e:
+            except (
+                pickle.UnpicklingError,
+                EOFError,
+                AttributeError,
+                AssertionError,
+            ) as e:
                 self._ann_index_wal_path.unlink()  # Clean up the broken file
-                raise DatabaseCorruptedError("Index recovery failed - both index and backup files are corrupted") from e
+                raise DatabaseCorruptedError(
+                    "Index recovery failed - both index and backup files are corrupted"
+                ) from e
 
     def _query_index(
         self,
@@ -480,7 +498,9 @@ class ApproximateSearch(BaseStrategy):
             query_vec = query_vec.flatten()
 
         # Map application IDs to internal index offsets
-        target_indices = np.array([self._id_to_idx[uid] for uid in ids if uid in self._id_to_idx])
+        target_indices = np.array(
+            [self._id_to_idx[uid] for uid in ids if uid in self._id_to_idx]
+        )
 
         if len(target_indices) == 0:
             return [], np.array([])
@@ -494,6 +514,6 @@ class ApproximateSearch(BaseStrategy):
 
         if self.metric == "cosine":
             # Since rii uses ascending order
-            top_scores = 1 - (top_scores/2)
+            top_scores = 1 - (top_scores / 2)
 
         return top_ids, top_scores

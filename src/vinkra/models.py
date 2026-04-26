@@ -77,7 +77,8 @@ class VectorRecord(BaseModel):
         default_factory=dict, description="Additional metadata as key-value pairs."
     )
     embedding: Any = Field(
-        default=None, description="Vector embedding. Validated and normalized by VectorRecords."
+        default=None,
+        description="Vector embedding. Validated and normalized by VectorRecords.",
     )
 
     @field_validator("id", mode="before")
@@ -85,6 +86,7 @@ class VectorRecord(BaseModel):
     def validate_id(cls, v):
         """Validate an ID or generate a new UUIDv7. Always returns 16 bytes."""
         return validate_id(v)
+
 
 class VectorRecords(BaseModel):
     """Container for multiple vector records with dimension enforcement."""
@@ -105,7 +107,7 @@ class VectorRecords(BaseModel):
                 record.embedding = validate_embedding(
                     self.embedding_callback(record.content),
                     dim=self.dim,
-                    metric=self.metric
+                    metric=self.metric,
                 )
 
             if record.embedding is not None:
