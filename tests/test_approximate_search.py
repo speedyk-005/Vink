@@ -4,10 +4,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vink.models import AnnConfig, VectorRecords
-from vink.sql_wrapper import SQLiteWrapper
-from vink.strategies.approximate_search import ApproximateSearch
-from vink.utils.id_generation import generate_id_bytes
+from vinkra.models import AnnConfig, VectorRecords
+from vinkra.sql_wrapper import SQLiteWrapper
+from vinkra.strategies.approximate_search import ApproximateSearch
+from vinkra.utils.id_generation import generate_id_bytes
 
 IDS_TO_DELETE = []
 
@@ -68,7 +68,9 @@ def test_add(approx_search_strategy, sample_embeddings):
             "embedding": sample_embeddings,
         },
     ]
-    approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=records))
+    approx_search_strategy.add(
+        VectorRecords(dim=128, metric="euclidean", records=records)
+    )
 
     n_ids = len(approx_search_strategy._all_ids)
     n_map = len(approx_search_strategy._id_to_idx)
@@ -81,7 +83,9 @@ def test_add(approx_search_strategy, sample_embeddings):
     )
 
     active_count = approx_search_strategy.db.count("active")
-    assert active_count == expected, f"Database count mismatch: {active_count} != {expected}"
+    assert active_count == expected, (
+        f"Database count mismatch: {active_count} != {expected}"
+    )
 
 
 def test_soft_delete(approx_search_strategy):
@@ -100,13 +104,17 @@ def test_soft_delete(approx_search_strategy):
     )
 
     active_count = approx_search_strategy.db.count("active")
-    assert active_count == expected, f"Database count mismatch: {active_count} != {expected}"
+    assert active_count == expected, (
+        f"Database count mismatch: {active_count} != {expected}"
+    )
 
 
 @pytest.mark.parametrize("sample_records", [{"num": 4}], indirect=True)
 def test_search_without_filter(approx_search_strategy, sample_records):
     """Test that search retrieves, ranks, and returns correct vector fields."""
-    approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=sample_records))
+    approx_search_strategy.add(
+        VectorRecords(dim=128, metric="euclidean", records=sample_records)
+    )
 
     # Use the first embedding from sample_records as query
     query_embedding = sample_records[0]["embedding"]
@@ -140,7 +148,9 @@ def test_search_with_filter(approx_search_strategy, sample_records):
     for i, record in enumerate(sample_records):
         record["metadata"]["category"] = "tech" if i % 2 == 0 else "science"
 
-    approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=sample_records))
+    approx_search_strategy.add(
+        VectorRecords(dim=128, metric="euclidean", records=sample_records)
+    )
 
     query_embedding = sample_records[0]["embedding"]
     results = approx_search_strategy.search(
@@ -158,20 +168,31 @@ def test_compact(approx_search_strategy):
     # Add extra records so compact has enough vectors to rebuild the ANN index
     rng = np.random.default_rng(seed=42)
     extra_records = [
-        {"id": generate_id_bytes(), "content": f"extra {i}", "embedding": rng.standard_normal(128).astype(np.float32), "metadata": {}}
+        {
+            "id": generate_id_bytes(),
+            "content": f"extra {i}",
+            "embedding": rng.standard_normal(128).astype(np.float32),
+            "metadata": {},
+        }
         for i in range(5)
     ]
-    approx_search_strategy.add(VectorRecords(dim=128, metric="euclidean", records=extra_records))
+    approx_search_strategy.add(
+        VectorRecords(dim=128, metric="euclidean", records=extra_records)
+    )
 
     index_before = approx_search_strategy.index
     approx_search_strategy.compact()
     time.sleep(0.2)
 
     assert approx_search_strategy.index is not None, "Index should be rebuilt"
-    assert approx_search_strategy.index is not index_before, "Index should be a new instance"
+    assert approx_search_strategy.index is not index_before, (
+        "Index should be a new instance"
+    )
 
     deleted_count = approx_search_strategy.db.count("deleted")
-    assert deleted_count == 0, "All soft-deleted records should be hard-deleted from SQLite"
+    assert deleted_count == 0, (
+        "All soft-deleted records should be hard-deleted from SQLite"
+    )
 
 
 def test_save_load(sample_embeddings, tmp_path):
@@ -218,4 +239,6 @@ def test_save_load(sample_embeddings, tmp_path):
 
     assert strategy2.index is not None, "Index should be loaded"
     assert strategy2.index.N == 10, f"Expected 10 vectors, got {strategy2.index.N}"
-    assert len(strategy2._all_ids) == 10, f"Expected 10 IDs, got {len(strategy2._all_ids)}"
+    assert len(strategy2._all_ids) == 10, (
+        f"Expected 10 IDs, got {len(strategy2._all_ids)}"
+    )

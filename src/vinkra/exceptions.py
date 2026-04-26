@@ -1,10 +1,10 @@
-class VinkDBError(Exception):
-    """Base exception for all Vink errors."""
+class VinkraraDBError(Exception):
+    """Base exception for all Vinkra errors."""
 
     pass
 
 
-class InvalidInputError(VinkDBError):
+class InvalidInputError(VinkraraDBError):
     """Raised when one or multiple invalid input(s) are encountered."""
 
     pass
@@ -34,7 +34,7 @@ class FilterError(InvalidInputError):
     pass
 
 
-class DatabaseCorruptedError(VinkDBError):
+class DatabaseCorruptedError(VinkraraDBError):
     """Raised when database files are corrupted."""
 
     pass

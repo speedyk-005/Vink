@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from vink.utils.id_generation import generate_id_bytes
-from vink.utils.input_validation import validate_embedding
+from vinkra.utils.id_generation import generate_id_bytes
+from vinkra.utils.input_validation import validate_embedding
 
 DIM = 128
 SEED = 42

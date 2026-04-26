@@ -1,5 +1,5 @@
 """
-Vink: Vector Incremental Nano Kit
+Vinkra: Vector Incremental Nano Kit — Reconfigurated Automatically
 
 A lightweight vector database that incrementally switches from exact to
 approximate search as your data grows — without full index rebuilds.
@@ -10,7 +10,7 @@ Note:
 
 Key differentiators:
     - **Incremental inserts**: Add vectors anytime — no rebuild per insert.
-    - **Automatic strategy switching**: No manual tuning — exact for small datasets, ANN for large.
+    - **Automatic reconfig**: No manual tuning — exact for small datasets, ANN for large.
     - **Thread-safe**: Background ANN building doesn't block new operations.
     - **Soft deletes + compact**: Efficient deletion with explicit storage reclamation.
 
@@ -21,7 +21,7 @@ Features:
     - SQLite-backed persistent storage.
 
 Technical Background:
-    Vink uses Reconfigurable Inverted Index (RII) with Product Quantization (PQ)
+    Vinkra uses Reconfigurable Inverted Index (RII) with Product Quantization (PQ)
     for approximate nearest neighbor search. The switch from exact to approximate
     happens when the normalized power-law complexity reaches 1.0:
     (dim * vectors / 1M) ^ switch_exp >= 1.0. Default switch_exp is 1.0.
@@ -42,11 +42,11 @@ See Also:
 
 from importlib.metadata import PackageNotFoundError, version
 
-from vink.core import VinkDB
-from vink.exceptions import *
-from vink.models import AnnConfig
+from vinkra.core import VinkraDB
+from vinkra.exceptions import *
+from vinkra.models import AnnConfig
 
 try:
-    __version__ = version("vink")
+    __version__ = version("vinkra")
 except PackageNotFoundError:
     __version__ = "0.0.0"

@@ -1,5 +1,5 @@
 [project]
-name = "vink"
+name = "vinkra"
 version = "0.1.0a1"
 description = "A lightweight vector database with incremental inserts, automatic exact-to-ANN switching, and explicit storage management. Add vectors anytime without rebuilding the index"
 authors = [
@@ -8,14 +8,12 @@ authors = [
 
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -27,6 +25,9 @@ classifiers = [
 keywords = ["vector-database", "ann", "approximate-nearest-neighbor", "similarity-search", "embedding-vectors", "semantic-search", "rag", "retrieval-augmented-generation", "llm", "generative-ai", "product-quantization", "vector-search", "ai", "information-retrieval", "knowledge-base"]
 
 dependencies = [
+    "regex>=2025.9.1",
+    "larch-pickle>=1.4.6",
+
     # rii requires pybind11>=2.9, but newer versions (3.x) build significantly faster.
     "pybind11>=3.0,<4.0",
 
@@ -49,12 +50,12 @@ dev = [
     "pytest-mock>=3.14.1",
     "pytest-rerunfailures>=15.0",
     "ruff>=0.14.14",
-    "python-docstring-markdown>=0.4.0",
+    "python-docstring-markdown>=0.2.2",
 ]
 
 [project.urls]
-Homepage = "https://github.com/speedyk-005/vink"
-Repository = "https://github.com/speedyk-005/vink"
+Homepage = "https://github.com/speedyk-005/vinkra"
+Repository = "https://github.com/speedyk-005/vinkra"
 
 [build-system]
 requires = [
@@ -65,18 +66,18 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-packages = ["vink", "vink.utils", "vink.strategies"]
+packages = ["vinkra", "vinkra.utils", "vinkra.strategies"]
 
 [tool.pytest.ini_options]
 minversion = "7.4"
-addopts = "--cov=vink --cov-report=term-missing:skip-covered --durations=10"
+addopts = "--cov=vinkra --cov-report=term-missing:skip-covered --durations=10"
 testpaths = ["tests"]
 python_files = "test_*.py"
 
 [tool.coverage.run]
 omit = [
-    "src/vink/strategies/base.py",
-    "src/vink/**/__init__.py",
+    "src/vinkra/strategies/base.py",
+    "src/vinkra/**/__init__.py",
 ]
 
 [tool.ruff]
@@ -90,7 +91,7 @@ ignore = ["E501", "E203"]
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore unused imports in all __init__.py files
-"src/vink/**/__init__.py" = ["F401", "F403"]
+"src/vinkra/**/__init__.py" = ["F401", "F403"]
 
 [tool.ruff.format]
 exclude = [

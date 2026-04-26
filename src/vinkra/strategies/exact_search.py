@@ -4,10 +4,10 @@ from typing import Literal
 import numpy as np
 from readerwriterlock import rwlock
 
-from vink.filter_parser import FilterToSql
-from vink.sql_wrapper import SQLiteWrapper
-from vink.strategies.base import BaseStrategy
-from vink.utils.logging import log_info
+from vinkra.filter_parser import FilterToSql
+from vinkra.sql_wrapper import SQLiteWrapper
+from vinkra.strategies.base import BaseStrategy
+from vinkra.utils.logging import log_info
 
 
 class ExactSearch(BaseStrategy):
@@ -159,7 +159,9 @@ class ExactSearch(BaseStrategy):
                     params=params,
                 )
                 match_set = {row[0] for row in rows}
-                filtered_mask = np.array([uid in match_set for uid in self.active_ids_arr])
+                filtered_mask = np.array(
+                    [uid in match_set for uid in self.active_ids_arr]
+                )
 
                 filtered_vectors = self.active_vectors_arr[filtered_mask]
                 filtered_ids = self.active_ids_arr[filtered_mask]
@@ -200,7 +202,9 @@ class ExactSearch(BaseStrategy):
 
             self._all_vectors = self.active_vectors_arr.tolist()
             self._all_ids = self.active_ids_arr.tolist()
-            self._id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)}
+            self._id_to_idx = {
+                id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)
+            }
             self._mask = [True] * len(self._all_ids)
 
             self.db.compact()
@@ -223,13 +227,17 @@ class ExactSearch(BaseStrategy):
             return
 
         with self._rwlock.gen_wlock():
-            cursor = self.db.conn.execute("SELECT id, embedding, deleted FROM vec_records")
+            cursor = self.db.conn.execute(
+                "SELECT id, embedding, deleted FROM vec_records"
+            )
             rows = cursor.fetchall()
 
             self._all_ids = [row[0] for row in rows]
             self._all_vectors = np.vstack([row[1] for row in rows])
             self._mask = [bool(row[2]) for row in rows]
-            self._id_to_idx = {id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)}
+            self._id_to_idx = {
+                id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)
+            }
 
             # Ensure cache is invalidated
             self.active_vectors_arr = None

@@ -85,8 +85,8 @@ class LatencyPredictor:
                     list(self.y_buffer),
                     p0=self._popt,
                     bounds=(lower_bounds, upper_bounds),
-                    method='trf',
-                    maxfev=50
+                    method="trf",
+                    maxfev=50,
                 )
                 self._popt = new_popt
             except Exception:
@@ -126,7 +126,9 @@ if __name__ == "__main__":  # pragma: no cover
         predictor._calibration_search(v, q)
         act = (time.perf_counter() - t0) * 1000
 
-        print(f"{i+1:<5} | {n:<7} | {p:6.2f}ms | {act:6.2f}ms | {predictor._popt[1]:4.2f}")
+        print(
+            f"{i + 1:<5} | {n:<7} | {p:6.2f}ms | {act:6.2f}ms | {predictor._popt[1]:4.2f}"
+        )
         predictor.tune(n, act)
 
     print(f"\nFinal Predict for 200000 vecs: {predictor.predict(200000):.2f}ms")

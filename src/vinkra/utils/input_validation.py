@@ -5,7 +5,7 @@ from uuid import UUID
 import numpy as np
 from pydantic import ConfigDict, ValidationError, validate_call
 
-from vink.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError
+from vinkra.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError
 
 
 def pretty_errors(error: ValidationError) -> str:
@@ -36,7 +36,9 @@ def pretty_errors(error: ValidationError) -> str:
         # reprlib.repr adds quotes and ellipsis around string truncation, which
         # looks odd for long strings. Plain slice is cleaner and faster for str.
         if isinstance(input_value, str):
-            input_repr = input_value[:200] + "..." if len(input_value) > 200 else input_value
+            input_repr = (
+                input_value[:200] + "..." if len(input_value) > 200 else input_value
+            )
         else:
             input_repr = reprlib.repr(input_value)
 
@@ -77,9 +79,7 @@ def validate_arguments(fn):
 
 
 def validate_embedding(
-    vecs: list[float] | np.ndarray,
-    dim: int,
-    metric: str
+    vecs: list[float] | np.ndarray, dim: int, metric: str
 ) -> np.ndarray:
     """
     Validate and optionally normalize input vectors.
@@ -107,7 +107,9 @@ def validate_embedding(
     try:
         vecs = np.asarray(vecs, dtype=np.float32)
     except (ValueError, TypeError):
-        raise InvalidInputError("Vector components must be numeric (int or float).") from None
+        raise InvalidInputError(
+            "Vector components must be numeric (int or float)."
+        ) from None
 
     # Validate shape: must be 1D (d,) or 2D with single row (1, d)
     if not (vecs.ndim == 1 or (vecs.ndim == 2 and vecs.shape[0] == 1)):

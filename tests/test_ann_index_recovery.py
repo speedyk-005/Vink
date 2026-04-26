@@ -4,11 +4,11 @@ import larch.pickle as pickle
 import numpy as np
 import pytest
 
-from vink.exceptions import DatabaseCorruptedError
-from vink.models import AnnConfig, VectorRecords
-from vink.sql_wrapper import SQLiteWrapper
-from vink.strategies.approximate_search import ApproximateSearch
-from vink.utils.id_generation import generate_id_bytes
+from vinkra.exceptions import DatabaseCorruptedError
+from vinkra.models import AnnConfig, VectorRecords
+from vinkra.sql_wrapper import SQLiteWrapper
+from vinkra.strategies.approximate_search import ApproximateSearch
+from vinkra.utils.id_generation import generate_id_bytes
 
 DB_PATH = "records.sqlite"
 
@@ -85,7 +85,9 @@ def test_crash_during_temp_file_save(approx_search_strategy):
     strategy.load(overwrite=True)
 
     assert strategy.index.N == 10, f"Expected N=10 but got {strategy.index.N}"
-    assert strategy.db.count("active") == 10, f"Expected count=10 but got {strategy.db.count('active')}"
+    assert strategy.db.count("active") == 10, (
+        f"Expected count=10 but got {strategy.db.count('active')}"
+    )
 
 
 def test_crash_before_db_commit(approx_search_strategy):
@@ -107,7 +109,9 @@ def test_crash_before_db_commit(approx_search_strategy):
     strategy.load(overwrite=True)
 
     assert strategy.index.N == 10, f"Expected N=10 but got {strategy.index.N}"
-    assert strategy.db.count("active") == 10, f"Expected count=10 but got {strategy.db.count('active')}"
+    assert strategy.db.count("active") == 10, (
+        f"Expected count=10 but got {strategy.db.count('active')}"
+    )
 
 
 def test_power_cut_after_commit_before_swap(approx_search_strategy):
@@ -128,7 +132,9 @@ def test_power_cut_after_commit_before_swap(approx_search_strategy):
     strategy.load(overwrite=True)
 
     assert strategy.index.N == 20, f"Expected N=29 but got {strategy.index.N}"
-    assert strategy.db.count("active") == 20, f"Expected count=20 but got {strategy.db.count('active')}"
+    assert strategy.db.count("active") == 20, (
+        f"Expected count=20 but got {strategy.db.count('active')}"
+    )
 
 
 def test_main_index_corrupted_wal_missing(approx_search_strategy):

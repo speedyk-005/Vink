@@ -1,7 +1,7 @@
 # TODO: Use the third party regex ibstead
 import re
 
-from vink.exceptions import FilterError
+from vinkra.exceptions import FilterError
 
 
 class FilterToSql:
@@ -23,20 +23,20 @@ class FilterToSql:
         value == 50
         in_stock == True
     """
+
     r_space = re.compile(r"\s*")
     r_ident = re.compile(r"[^\W\d]\w*")
     r_ops = re.compile(r"(?:>=|<=|==|!=|>|<)")
     r_string = re.compile(r"(['\"])(?:\\\1|.)*?\1")
     r_num = re.compile(
-       # Float (e.g., 123.45, -0.5, .25, 1.2e3)
+        # Float (e.g., 123.45, -0.5, .25, 1.2e3)
         r"(?:"
-            r"[-+]?(?:"
-                r"(?:\d*\.\d+|\d+\.\d*)(?:[eE][-+]?\d+)?|" # Decimals with optional exponent
-                r"\d+[eE][-+]?\d+"                   # Integers with mandatory exponent (e.g. 1e3)
-            r")"
-            r"(?![\w\.])"                       # Prevents letters, underscore, or dot right after
+        r"[-+]?(?:"
+        r"(?:\d*\.\d+|\d+\.\d*)(?:[eE][-+]?\d+)?|"  # Decimals with optional exponent
+        r"\d+[eE][-+]?\d+"  # Integers with mandatory exponent (e.g. 1e3)
+        r")"
+        r"(?![\w\.])"  # Prevents letters, underscore, or dot right after
         r")|"
-
         # Int (e.g., 123, -42, +7)
         r"(?:[-+]?\d+(?![\w\.]))"
     )
@@ -45,8 +45,11 @@ class FilterToSql:
     START = [
         ((r_ident,), "field name (e.g., category, content)"),
         ((r_ops,), "comparison operator (==, !=, >=, <=, >, <)"),
-        ((r_string, r_num, r_bool_val), "quoted string, number or a titled boolean value"),
-     ]
+        (
+            (r_string, r_num, r_bool_val),
+            "quoted string, number or a titled boolean value",
+        ),
+    ]
 
     def translate(self, filters: list[str]) -> tuple[str, list]:
         """
@@ -71,7 +74,7 @@ class FilterToSql:
                     f"error at index {idx}, col {res['col']}, found: {res['found']}, expecting: {res['expect']}"
                 )
 
-            sequence = res['sequence']
+            sequence = res["sequence"]
 
             field = sequence[0]
             if field == "content":
@@ -79,7 +82,9 @@ class FilterToSql:
             else:
                 field = f"metadata ->> '{field}'"
 
-            operator = "=" if sequence[1] == "==" else sequence[1]  # Normalize to sql syntax
+            operator = (
+                "=" if sequence[1] == "==" else sequence[1]
+            )  # Normalize to sql syntax
             all_conditions.append(f"{field} {operator} ?")
 
             literal = sequence[2]
@@ -119,7 +124,7 @@ class FilterToSql:
                         "success": False,
                         "expect": expect,
                         "found": "end of input",
-                        "col": curr_col
+                        "col": curr_col,
                     }
                 m = alt.match(curr_substring)
                 if not m:
@@ -139,7 +144,7 @@ class FilterToSql:
                     "success": False,
                     "expect": expect,
                     "found": found,
-                    "col": curr_col
+                    "col": curr_col,
                 }
 
         if curr_substring:
@@ -147,7 +152,7 @@ class FilterToSql:
                 "success": False,
                 "expect": "end of statement",
                 "found": curr_substring.strip(),
-                "col": curr_col
+                "col": curr_col,
             }
 
         return {"success": True, "sequence": sequence}
@@ -156,11 +161,11 @@ class FilterToSql:
         """Cast a value to a string or number else keep as is."""
         val = val.strip("'\"")
         try:
-             if any(char in val for char in ".[eE]"):
+            if any(char in val for char in ".[eE]"):
                 return float(val)
-             return int(val)
+            return int(val)
         except ValueError:
-             return val
+            return val
 
 
 if __name__ == "__main__":  # pragma: no cover

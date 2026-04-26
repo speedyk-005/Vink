@@ -4,9 +4,9 @@ import numpy as np
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic.fields import PydanticUndefined
 
-from vink.exceptions import InvalidInputError, VectorDimensionError
-from vink.utils.id_generation import generate_id_bytes
-from vink.utils.input_validation import validate_embedding, validate_id
+from vinkra.exceptions import InvalidInputError, VectorDimensionError
+from vinkra.utils.id_generation import generate_id_bytes
+from vinkra.utils.input_validation import validate_embedding, validate_id
 
 
 class AnnConfig(BaseModel):
@@ -77,7 +77,8 @@ class VectorRecord(BaseModel):
         default_factory=dict, description="Additional metadata as key-value pairs."
     )
     embedding: Any = Field(
-        default=None, description="Vector embedding. Validated and normalized by VectorRecords."
+        default=None,
+        description="Vector embedding. Validated and normalized by VectorRecords.",
     )
 
     @field_validator("id", mode="before")
@@ -85,6 +86,7 @@ class VectorRecord(BaseModel):
     def validate_id(cls, v):
         """Validate an ID or generate a new UUIDv7. Always returns 16 bytes."""
         return validate_id(v)
+
 
 class VectorRecords(BaseModel):
     """Container for multiple vector records with dimension enforcement."""
@@ -105,7 +107,7 @@ class VectorRecords(BaseModel):
                 record.embedding = validate_embedding(
                     self.embedding_callback(record.content),
                     dim=self.dim,
-                    metric=self.metric
+                    metric=self.metric,
                 )
 
             if record.embedding is not None:

@@ -7,8 +7,8 @@ Hey! Thanks for thinking about contributing. Bug fixes, features, docs — all w
 1. **Clone the repository:**
 
     ```bash
-    git clone https://github.com/speedyk-005/vink.git
-    cd vink
+git clone https://github.com/speedyk-005/vinkra.git
+cd vinkra
     ```
 
 2. **Install dependencies:**
@@ -71,7 +71,7 @@ Hey! Thanks for thinking about contributing. Bug fixes, features, docs — all w
     pip install -e ".[dev]"
     
     # Generate API_REFERENCES.md from docstrings
-    python -m python_docstring_markdown ./src/vink API_REFERENCES.md
+    python -m python_docstring_markdown ./src/vinkra API_REFERENCES.md
     
     # Generate/update README TOC (GitHub-compatible)
     npx doctoc --github README.md
