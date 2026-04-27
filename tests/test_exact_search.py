@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vinkra.models import VectorRecords
+from vinkra.models import VectorRecord
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.exact_search import ExactSearch
 from vinkra.utils.id_generation import generate_id_bytes
@@ -30,32 +30,30 @@ def test_add(exact_search_strategy, sample_embeddings):
     Test adding vector records by checking if internal structures are synced and SQLite count.
     """
     records = [
-        {
-            "id": IDS_TO_DELETE[0],
-            "content": "content 1",
-            "metadata": {"index": 1},
-            "embedding": sample_embeddings,
-        },
-        {
-            "id": IDS_TO_DELETE[1],
-            "content": "content 2",
-            "metadata": {"index": 2},
-            "embedding": sample_embeddings,
-        },
-        {
-            "content": "content 3",
-            "metadata": {"index": 3},
-            "embedding": sample_embeddings,
-        },
-        {
-            "content": "content 4",
-            "metadata": {"index": 4},
-            "embedding": sample_embeddings,
-        },
+        VectorRecord(
+            id=IDS_TO_DELETE[0],
+            content="content 1",
+            metadata={"index": 1},
+            embedding=sample_embeddings,
+        ),
+        VectorRecord(
+            id=IDS_TO_DELETE[1],
+            content="content 2",
+            metadata={"index": 2},
+            embedding=sample_embeddings,
+        ),
+        VectorRecord(
+            content="content 3",
+            metadata={"index": 3},
+            embedding=sample_embeddings,
+        ),
+        VectorRecord(
+            content="content 4",
+            metadata={"index": 4},
+            embedding=sample_embeddings,
+        ),
     ]
-    exact_search_strategy.add(
-        VectorRecords(dim=128, metric="euclidean", records=records)
-    )
+    exact_search_strategy.add(records)
 
     n_ids = len(exact_search_strategy._all_ids)
     n_vecs = len(exact_search_strategy._all_vectors)
@@ -98,12 +96,10 @@ def test_soft_delete(exact_search_strategy):
 @pytest.mark.parametrize("sample_records", [{"num": 4}], indirect=True)
 def test_search_without_filter(exact_search_strategy, sample_records):
     """Test that search retrieves, ranks, and returns correct vector fields."""
-    exact_search_strategy.add(
-        VectorRecords(dim=128, metric="euclidean", records=sample_records)
-    )
+    exact_search_strategy.add(sample_records)
 
     # Use the first embedding from sample_records as query
-    query_embedding = sample_records[0]["embedding"]
+    query_embedding = sample_records[0].embedding
     results = exact_search_strategy.search(
         query_embedding, top_k=4, include_vectors=True
     )
@@ -112,18 +108,17 @@ def test_search_without_filter(exact_search_strategy, sample_records):
     assert len(results) == 4, f"Expected 4 results, but got {len(results)}"
 
     for record in sample_records:
-        rec_id_str = exact_search_strategy._bytes_to_uuid_str(record["id"])
+        rec_id_str = exact_search_strategy._bytes_to_uuid_str(record.id)
 
-        # Only validate if the record actually made it into the top_k
         if rec_id_str in id_to_res:
             res_item = id_to_res[rec_id_str]
-            assert res_item["content"] == record["content"], (
+            assert res_item["content"] == record.content, (
                 f"Content mismatch for {rec_id_str}"
             )
-            assert res_item["metadata"] == record["metadata"], (
+            assert res_item["metadata"] == record.metadata, (
                 f"Metadata mismatch for {rec_id_str}"
             )
-            assert np.allclose(res_item["embedding"], record["embedding"]), (
+            assert np.allclose(res_item["embedding"], record.embedding), (
                 f"Embedding mismatch for {rec_id_str}"
             )
 
@@ -132,13 +127,11 @@ def test_search_without_filter(exact_search_strategy, sample_records):
 def test_search_with_filter(exact_search_strategy, sample_records):
     """Test that search with filter returns only matching records."""
     for i, record in enumerate(sample_records):
-        record["metadata"]["category"] = "tech" if i % 2 == 0 else "science"
+        record.metadata["category"] = "tech" if i % 2 == 0 else "science"
 
-    exact_search_strategy.add(
-        VectorRecords(dim=128, metric="euclidean", records=sample_records)
-    )
+    exact_search_strategy.add(sample_records)
 
-    query_embedding = sample_records[0]["embedding"]
+    query_embedding = sample_records[0].embedding
     results = exact_search_strategy.search(
         query_embedding, top_k=2, filters=["category == 'tech'"]
     )
@@ -185,16 +178,14 @@ def test_save_load(sample_embeddings, tmp_path):
     )
 
     records = [
-        {
-            "content": f"content {i}",
-            "metadata": {"i": i},
-            "embedding": sample_embeddings,
-        }
+        VectorRecord(
+            content=f"content {i}",
+            metadata={"i": i},
+            embedding=sample_embeddings,
+        )
         for i in range(3)
     ]
-    original_ids = strategy.add(
-        VectorRecords(dim=128, metric="euclidean", records=records)
-    )
+    original_ids = strategy.add(records)
 
     strategy.save()
 

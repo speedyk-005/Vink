@@ -31,12 +31,12 @@ def test_switch_triggers(vinkdb, sample_records, mocker):
     assert vinkdb.strategy == "exact_search", "Should start with exact search"
 
     # Add first 7 records without triggering switch
-    vinkdb.add(sample_records[:7])
+    vinkdb.add([r.model_dump() for r in sample_records[:7]])
     assert vinkdb.strategy == "exact_search", "Should still be exact after first batch"
 
     # Mock to trigger switch on next add
     mocker.patch.object(vinkdb, "_should_switch", return_value=True)
-    vinkdb.add(sample_records[7:])
+    vinkdb.add([r.model_dump() for r in sample_records[7:]])
 
     assert vinkdb._ann_building is True, (
         "Rerun test - ANN build may complete too fast to catch"
@@ -64,11 +64,11 @@ def test_force_exact(vinkdb, sample_records, mocker):
 def test_search_with_filter(vinkdb, sample_records):
     """Test that search with filter returns only matching records."""
     for i, record in enumerate(sample_records):
-        record["metadata"]["category"] = "tech" if i % 2 == 0 else "science"
+        record.metadata["category"] = "tech" if i % 2 == 0 else "science"
 
-    vinkdb.add(sample_records)
+    vinkdb.add([r.model_dump() for r in sample_records])
 
-    query_embedding = sample_records[0]["embedding"]
+    query_embedding = sample_records[0].embedding
     results = vinkdb.search(query_embedding, top_k=4, filters=["category == 'tech'"])
 
     assert all(r["metadata"]["category"] == "tech" for r in results), (

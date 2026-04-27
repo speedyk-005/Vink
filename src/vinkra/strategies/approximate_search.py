@@ -15,7 +15,7 @@ from vinkra.exceptions import (
     InvalidInputError,
 )
 from vinkra.filter_parser import FilterToSql
-from vinkra.models import AnnConfig
+from vinkra.models import AnnConfig, VectorRecord
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.base import BaseStrategy
 from vinkra.utils.logging import log_info, logger
@@ -203,11 +203,11 @@ class ApproximateSearch(BaseStrategy):
 
         self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
 
-    def add(self, vector_records, is_buffer: bool = False) -> list[str]:
+    def add(self, vector_records: list[VectorRecord], is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
-            vector_records (VectorRecords): Container with list of vector records.
+            vector_records (list[VectorRecord]): List of vector records.
 
         Returns:
             list[str]: List of assigned UUIDv7 IDs.
@@ -221,7 +221,7 @@ class ApproximateSearch(BaseStrategy):
             assigned_ids = []
             embeddings = []
 
-            for record in vector_records.records:
+            for record in vector_records:
                 idx = len(self._all_ids)
                 self._all_ids.append(record.id)
                 self._id_to_idx[record.id] = idx
@@ -235,7 +235,7 @@ class ApproximateSearch(BaseStrategy):
         if not is_buffer:
             self.db.insert(vector_records)
 
-        self._delta_since_reconfig += len(vector_records.records)
+        self._delta_since_reconfig += len(vector_records)
         if (
             not (self.is_reconfig or self.is_compacting)
             and self._delta_since_reconfig >= self.reconfig_threshold

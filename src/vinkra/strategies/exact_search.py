@@ -5,6 +5,7 @@ import numpy as np
 from readerwriterlock import rwlock
 
 from vinkra.filter_parser import FilterToSql
+from vinkra.models import VectorRecord
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.base import BaseStrategy
 from vinkra.utils.logging import log_info
@@ -79,11 +80,11 @@ class ExactSearch(BaseStrategy):
         self.active_vectors_arr = np.vstack(self._all_vectors)[active_indices]
         self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
 
-    def add(self, vector_records, is_buffer: bool = False) -> list[str]:
+    def add(self, vector_records: list[VectorRecord], is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
-            vector_records (VectorRecords): Container with list of vector records.
+            vector_records (list[VectorRecord]): List of vector records.
             is_buffer (bool): If True, records are already in SQLite. Defaults to False.
 
         Returns:
@@ -92,7 +93,7 @@ class ExactSearch(BaseStrategy):
         with self._rwlock.gen_wlock():
             assigned_ids = []
 
-            for record in vector_records.records:
+            for record in vector_records:
                 idx = len(self._all_ids)
                 self._all_vectors.append(record.embedding)
                 self._all_ids.append(record.id)

@@ -3,7 +3,7 @@ import sqlite3
 from importlib.metadata import PackageNotFoundError, version
 from typing import Generator, Literal
 
-from vinkra.models import VectorRecords
+from vinkra.models import VectorRecord, VectorRecords
 from vinkra.utils.input_validation import validate_arguments
 
 if sqlite3.sqlite_version_info < (3, 45, 0):
@@ -106,11 +106,11 @@ class SQLiteWrapper:
         self._conn.commit()
 
     @validate_arguments
-    def insert(self, vec_records: VectorRecords, is_buffer: bool = False) -> None:
+    def insert(self, vec_records: list[VectorRecord], is_buffer: bool = False) -> None:
         """Insert vec_records into SQLite.
 
         Args:
-            vec_records: VectorRecords object.
+            vec_records: List of VectorRecord objects.
             is_buffer: If True, marks all vec_records as buffered vec_records.
         """
         cursor = self._conn.cursor()
@@ -122,7 +122,7 @@ class SQLiteWrapper:
                 "metadata": json.dumps(r.metadata),
                 "embedding": r.embedding.tobytes(),
             }
-            for r in vec_records.records
+            for r in vec_records
         ]
 
         cursor.executemany(

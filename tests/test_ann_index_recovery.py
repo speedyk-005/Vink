@@ -5,9 +5,10 @@ import numpy as np
 import pytest
 
 from vinkra.exceptions import DatabaseCorruptedError
-from vinkra.models import AnnConfig, VectorRecords
+from vinkra.models import AnnConfig, VectorRecord, VectorRecords
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.approximate_search import ApproximateSearch
+from vinkra.utils.id_generation import generate_id_bytes
 from vinkra.utils.id_generation import generate_id_bytes
 
 DB_PATH = "records.sqlite"
@@ -36,12 +37,12 @@ def sample_records_20():
     for i in range(20):
         vec = rng.standard_normal(128, dtype=np.float32)
         records.append(
-            {
-                "id": generate_id_bytes(),
-                "content": f"test document {i}",
-                "metadata": {"index": i},
-                "embedding": vec,
-            }
+            VectorRecord(
+                id=generate_id_bytes(),
+                content=f"test document {i}",
+                metadata={"index": i},
+                embedding=vec,
+            )
         )
     return records
 
@@ -53,19 +54,19 @@ def approx_search_strategy(sample_records_20, tmp_path):
 
     # N must be greater than codebook_size (8) - use first 10 for fit
     first_10 = sample_records_20[:10]
-    vectors = np.array([r["embedding"] for r in first_10], dtype=np.float32)
-    ids = [r["id"] for r in first_10]
+    vectors = np.array([r.embedding for r in first_10], dtype=np.float32)
+    ids = [r.id for r in first_10]
 
     strategy.fit(vectors, np.array(ids, dtype="S16"))
 
     # Use wrapper insert to simulate exact search data before the switch
-    strategy.db.insert(VectorRecords(dim=128, metric="cosine", records=first_10))
+    strategy.db.insert(first_10)
 
     strategy.save()
 
     # Add remaining 10 vectors after save
     remaining_10 = sample_records_20[10:]
-    strategy.add(VectorRecords(dim=128, metric="cosine", records=remaining_10))
+    strategy.add(remaining_10)
 
     return strategy
 

@@ -12,7 +12,7 @@ from readerwriterlock import rwlock
 
 from vinkra.exceptions import InvalidInputError, VectorDimensionError
 from vinkra.latency_predictor import LatencyPredictor
-from vinkra.models import AnnConfig, VectorRecords
+from vinkra.models import AnnConfig, VectorRecord, VectorRecords
 from vinkra.sql_wrapper import SQLiteWrapper
 
 # The strategies and the latency predictor are lazy imported
@@ -280,7 +280,7 @@ class VinkraDB:
 
         if self._ann_building:
             assigned_ids = [r.id for r in records.records]
-            self._records_db.insert(records, is_buffer=True)
+            self._records_db.insert(records.records, is_buffer=True)
             log_info(
                 self.verbose,
                 "Successfully added {} records to buffer.",
@@ -288,7 +288,7 @@ class VinkraDB:
             )
             return assigned_ids
 
-        assigned_ids = self._strategy.add(records)
+        assigned_ids = self._strategy.add(records.records)
 
         if self.strategy == "exact_search":
             # Check if switch should be triggered based on new count
@@ -509,20 +509,16 @@ class VinkraDB:
             return
 
         records = [
-            {
-                "id": row[0],
-                "embedding": np.frombuffer(row[1], dtype=np.float32),
-                # Not used, kept for validation
-                "content": "",
-                "metadata": {},
-            }
+            VectorRecord(
+                id=row[0],
+                embedding=np.frombuffer(row[1], dtype=np.float32),
+                content="",
+                metadata={},
+            )
             for row in buffer_rows
         ]
 
-        strategy.add(
-            VectorRecords(dim=self.dim, metric=self.metric, records=records),
-            is_buffer=True,
-        )
+        strategy.add(records, is_buffer=True)
         self._records_db.clear_buffer()
         log_info(
             self.verbose,
