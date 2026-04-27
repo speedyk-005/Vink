@@ -262,6 +262,23 @@ class VinkraDB:
             log_info(self.verbose, "Input is empty, returning empty list.")
             return []
 
+        if (
+            self.count() == 0
+            and self._latency_predictor.predict(len(vector_records))
+            > self._ann_config.switch_latency_ms
+        ):
+            optimal = self._find_optimal_subset_size(len(vector_records))
+            log_info(
+                self.verbose,
+                "First batch exceeds threshold: splitting {} into {} + {}",
+                len(vector_records),
+                optimal,
+                len(vector_records) - optimal,
+            )
+            subset_records = vector_records[:optimal] 
+            remainder_records = vector_records[optimal:]
+            return self.add(subset_records) + self.add(remainder_records)
+
         try:
             records = VectorRecords(
                 dim=self.dim,
@@ -441,6 +458,24 @@ class VinkraDB:
             round(elapsed_ms, 2),
         )
         return results
+
+    def _find_optimal_subset_size(self, n_total: int) -> int:
+        """Find max subset that stays under latency threshold via halving.
+
+        Args:
+            n_total: Total vectors to add.
+
+        Returns:
+            Optimal subset size that stays under threshold.
+        """
+        n_cand = n_total // 2
+        while n_cand > 0:
+            if self._latency_predictor.predict(n_cand) <= self._ann_config.switch_latency_ms:
+                break
+            n_cand //= 2
+
+        return max(n_cand, 1)
+
 
     def _should_switch(self) -> bool:
         """
