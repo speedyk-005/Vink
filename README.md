@@ -140,7 +140,7 @@ The demo uses:
 - `dim=128`
 - Batches of 10,000 vectors
 
-The switch happens when latency exceeds `switch_latency_ms`. New vectors are buffered during the switch with zero downtime.
+The switch happens when latency exceeds `switch_latency_ms`. A Power Law model (`y = a * x^b`) continuously tunes itself from actual search latencies to predict future performance. New vectors are buffered during the switch with zero downtime.
 
 Results vary by hardware and system load — faster machines switch later, and running other programs will affect timing.
 
