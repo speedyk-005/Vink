@@ -76,7 +76,7 @@ def test_crash_during_temp_file_save(approx_search_strategy):
     db_path = approx_search_strategy.dir_path
 
     # Corrupt the .wal file (simulate power cut during temp file write)
-    approx_search_strategy._ann_index_wal_path.write_bytes(b"corrupted")
+    approx_search_strategy._ann_shadow_index_path.write_bytes(b"corrupted")
 
     # Close the fixture's connection to release lock
     approx_search_strategy.db.close()
@@ -94,7 +94,7 @@ def test_crash_during_temp_file_save(approx_search_strategy):
 def test_crash_before_db_commit(approx_search_strategy):
     """Temp file saved but db not committed - load falls back (N=10, count=10)."""
     db_path = approx_search_strategy.dir_path
-    ann_index_wal_path = approx_search_strategy._ann_index_wal_path
+    ann_index_wal_path = approx_search_strategy._ann_shadow_index_path
 
     with open(ann_index_wal_path, "wb") as f:
         pickle.dump(approx_search_strategy.index, f, protocol=5)
@@ -118,7 +118,7 @@ def test_crash_before_db_commit(approx_search_strategy):
 def test_power_cut_after_commit_before_swap(approx_search_strategy):
     """Db committed, temp file saved but not swapped - recovery should work (N=20)."""
     db_path = approx_search_strategy.dir_path
-    ann_index_wal_path = approx_search_strategy._ann_index_wal_path
+    ann_index_wal_path = approx_search_strategy._ann_shadow_index_path
 
     with open(ann_index_wal_path, "wb") as f:
         pickle.dump(approx_search_strategy.index, f, protocol=5)

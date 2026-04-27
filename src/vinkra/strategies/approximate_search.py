@@ -90,10 +90,10 @@ class ApproximateSearch(BaseStrategy):
 
         if self.dir_path is not None:
             self._ann_index_path = self.dir_path / "ann_index.pkl"
-            self._ann_index_wal_path = self.dir_path / "ann_index.pkl.tmp"
+            self._ann_shadow_index_path = self.dir_path / "ann_index.pkl.tmp"
         else:
             self._ann_index_path = None
-            self._ann_index_wal_path = None
+            self._ann_shadow_index_path = None
 
     def fit(
         self,
@@ -377,14 +377,14 @@ class ApproximateSearch(BaseStrategy):
         """Save the index to disk using double-write strategy for tight syncing."""
         self._validate_fitted()
 
-        with open(self._ann_index_wal_path, "wb") as f:
+        with open(self._ann_shadow_index_path, "wb") as f:
             pickle.dump(self.index, f, protocol=5)
             f.flush()  # Flush internal buffer
             os.fsync(f.fileno())  # Force OS to write to physical disk
 
         self.db.commit()
 
-        self._ann_index_wal_path.replace(self._ann_index_path)
+        self._ann_shadow_index_path.replace(self._ann_index_path)
 
         # Sync the directory
         # This ensure the 'replace' above survives a power loss
@@ -443,13 +443,13 @@ class ApproximateSearch(BaseStrategy):
             )
 
             try:
-                with open(self._ann_index_wal_path, "rb") as f:
+                with open(self._ann_shadow_index_path, "rb") as f:
                     temp_index = pickle.load(f)
 
                 assert len(self._all_ids) == temp_index.N
 
                 self.index = temp_index
-                self._ann_index_wal_path.replace(self._ann_index_path)
+                self._ann_shadow_index_path.replace(self._ann_index_path)
 
                 # Sync the directory
                 dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
@@ -470,7 +470,7 @@ class ApproximateSearch(BaseStrategy):
                 AttributeError,
                 AssertionError,
             ) as e:
-                self._ann_index_wal_path.unlink()  # Clean up the broken file
+                self._ann_shadow_index_path.unlink()  # Clean up the broken file
                 raise DatabaseCorruptedError(
                     "Index recovery failed - both index and backup files are corrupted"
                 ) from e
