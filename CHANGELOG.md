@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.0a2] - 2026-07-10
+
+### Changed
+
+- **stdlib pickle:** Replaced `larch-pickle` dependency with Python's stdlib `pickle`
+- **Deps:** Relaxed `pydantic` constraint to `>=2.10.0` for Android compatibility
+
+### Added
+
+- **Termux install guide:** Installation tip for Android users building without a Rust toolchain
+
+---
+
 ## [0.1.0a1] - 2026-04-08
 
 ### Added
