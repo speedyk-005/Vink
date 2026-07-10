@@ -3,7 +3,7 @@ from pathlib import Path
 from threading import Thread
 from typing import Literal
 
-import larch.pickle as pickle
+import pickle
 import nanopq
 import numpy as np
 import rii

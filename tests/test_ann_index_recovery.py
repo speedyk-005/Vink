@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import larch.pickle as pickle
+import pickle
 import numpy as np
 import pytest
 
