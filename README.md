@@ -111,6 +111,17 @@ The simplest way to get started is with pip:
 pip install vinkra
 ```
 
+> [!TIP]
+> **Termux (Android)**
+>
+> No Rust toolchain? Install pydantic-core pre-built wheels first, then retry:
+>
+> ```bash
+> pip install typing-extensions
+> pip install pydantic-core --index-url https://termux-user-repository.github.io/pypi/
+> pip install "pydantic>=2.12.4,<2.13"
+> ```
+
 ### The From-Source Way
 
 Prefer building from source? You can clone and install manually for full control:
