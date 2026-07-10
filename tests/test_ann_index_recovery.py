@@ -22,7 +22,6 @@ def _create_bare_approx_strategy(dir_path: Path) -> ApproximateSearch:
         db=SQLiteWrapper(str(dir_path / DB_PATH), index_config={}),
         dir_path=dir_path,
         dim=128,
-        in_memory=False,
         metric="cosine",
         verbose=False,
         ann_config=config,

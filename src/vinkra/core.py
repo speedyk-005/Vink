@@ -65,8 +65,8 @@ class VinkraDB:
     @validate_arguments
     def __init__(
         self,
-        dir_path: str | Path,
         dim: Annotated[int, Field(ge=16)],
+        dir_path: str | Path | None = None,
         metric: Literal["euclidean", "cosine"] = "euclidean",
         force_exact: bool = False,
         ann_config: AnnConfig | None = None,
@@ -85,10 +85,10 @@ class VinkraDB:
             Everything else is read-only properties.
 
         Args:
-            dir_path (str | Path): Directory path to store vector data. Contains the pickled index
-                and SQLite database for vector records.
-                Use ":memory:" for volatile in-memory storage.
             dim (int): Dimension of the vectors. Must be higher than 16.
+            dir_path (str | Path | None): Directory path to store vector data. Contains the pickled index
+                and SQLite database for vector records.
+                Pass None for volatile in-memory storage.
             metric (Literal["euclidean", "cosine"], optional): Distance metric to use.
                 Defaults to "euclidean".
             force_exact (bool, optional): If True, only exact calculation is used.
@@ -103,10 +103,7 @@ class VinkraDB:
             overwrite (bool, optional): Overwrite existing index if exists. Defaults to False.
             verbose (bool, optional): Enable verbose output. Defaults to False.
         """
-        # Determine if in-memory mode
-        self._in_memory = isinstance(dir_path, str) and dir_path.strip() == ":memory:"
-
-        self._dir_path = Path(dir_path)
+        self._dir_path = Path(dir_path) if dir_path else None
         self._dim = dim
         self._metric = metric
         self._ann_config = ann_config
@@ -123,7 +120,7 @@ class VinkraDB:
 
         self._validate_config()
 
-        if not self._in_memory:
+        if self._dir_path is not None:
             if overwrite and self.dir_path.exists():
                 shutil.rmtree(self.dir_path)
 
@@ -148,7 +145,7 @@ class VinkraDB:
         self.load()
 
     @property
-    def dir_path(self) -> Path:
+    def dir_path(self) -> Path | None:
         return self._dir_path
 
     @property
@@ -162,10 +159,6 @@ class VinkraDB:
     @property
     def force_exact(self) -> bool:
         return self._force_exact
-
-    @property
-    def in_memory(self) -> bool:
-        return self._in_memory
 
     @property
     def strategy(self) -> str:
@@ -373,9 +366,8 @@ class VinkraDB:
         if self._strategy is None:
             params = {
                 "db": self._records_db,
-                "dir_path": self._dir_path if not self._in_memory else None,
+                "dir_path": self._dir_path,
                 "dim": self._dim,
-                "in_memory": self._in_memory,
                 "metric": self.metric,
                 "verbose": self.verbose,
             }
@@ -513,9 +505,8 @@ class VinkraDB:
 
         approx_strategy = ApproximateSearch(
             db=self._records_db,
-            dir_path=self._dir_path if not self._in_memory else None,
+            dir_path=self._dir_path,
             dim=self._dim,
-            in_memory=self._in_memory,
             metric=self.metric,
             verbose=self.verbose,
             ann_config=self._ann_config,

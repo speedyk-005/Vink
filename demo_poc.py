@@ -55,7 +55,7 @@ def demonstrate_automatic_switch():
     config = AnnConfig(
         switch_latency_ms=SWITCH_LATENCY_MS,
     )
-    db = VinkraDB(dir_path=":memory:", dim=DIM, ann_config=config, verbose=True)
+    db = VinkraDB(dim=DIM, ann_config=config, verbose=True)
 
     count = 0
     ann_switched = False
