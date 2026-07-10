@@ -23,7 +23,6 @@ class BaseStrategy(ABC):
         dir_path: Path | None,
         dim: int,
         is_exact: bool,
-        in_memory: bool,
         metric: Literal["euclidean", "cosine"],
         verbose: bool,
         **kwargs,
@@ -33,25 +32,19 @@ class BaseStrategy(ABC):
 
         Args:
             db (SQLiteWrapper): SQLite wrapper for database operations.
-            dir_path (Path | None): Path to store vector data for querying. Defaults to None.
+            dir_path (Path | None): Path to store vector data. None for in-memory storage.
             dim (int): Dimension of the vectors.
             is_exact (bool): Whether this strategy uses exact search.
-            in_memory (bool): Whether using in-memory storage.
             metric (Literal["euclidean", "cosine"]): Distance metric to use.
             verbose (bool): Enable verbose output.
             **kwargs: Additional keyword arguments for subclasses.
         """
         self.db = db
-        # Reserved for future index persistence (save/load to disk)
         self.dir_path = dir_path
         self.is_exact = is_exact
         self.dim = dim
-        self.in_memory = in_memory
         self.metric = metric
         self.verbose = verbose
-
-        if dir_path is None and not in_memory:
-            raise ValueError("in_memory must be True if no dir_path is provided.")
 
     @abstractmethod
     def add(self, vector_records: list[VectorRecord], is_buffer: bool = False) -> list[str]:

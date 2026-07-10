@@ -182,15 +182,15 @@ Example output:
 from vinkra import VinkraDB
 
 # Create a database with 128-dimensional vectors
-db = VinkraDB("./data", dim=128)
+db = VinkraDB(dim=128, dir_path="./data")
 
-# Or use in-memory mode (no persistence)
-db = VinkraDB(":memory:", dim=128)
+# Or use in-memory mode (no persistence, just omit dir_path)
+db = VinkraDB(dim=128)
 
 # With custom settings
 db = VinkraDB(
-    dir_path="./data",
     dim=384,
+    dir_path="./data",
     metric="euclidean",       # or "cosine" (default: euclidean)
     force_exact=False,         # or True to disable ANN (default: False)
     ann_config=None,           # ANNConfig for PQ/OPQ (default: auto-generated)
@@ -213,7 +213,7 @@ config = AnnConfig(
     quantizer="pq",           # "pq" or "opq" (default: pq)
     codebook_size=128,        # centroids per subspace (default: 256)
 )
-db = VinkraDB("./data", dim=384, ann_config=config)
+db = VinkraDB(dim=384, dir_path="./data", ann_config=config)
 
 # print all available options:
 AnnConfig.help()
@@ -233,7 +233,7 @@ Provide embeddings directly or use a callback to generate them on the fly.
 #### With embedding callback
 
 ```python
-db = VinkraDB("./data", dim=384, embedding_callback=my_embedding_fn)
+db = VinkraDB(dim=384, dir_path="./data", embedding_callback=my_embedding_fn)
 
 # Just provide content — embeddings generated automatically
 db.add([

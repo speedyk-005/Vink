@@ -43,7 +43,6 @@ class ApproximateSearch(BaseStrategy):
         db: SQLiteWrapper,
         dir_path: Path | None,
         dim: int,
-        in_memory: bool,
         metric: Literal["euclidean", "cosine"],
         verbose: bool,
         ann_config: AnnConfig,
@@ -53,10 +52,9 @@ class ApproximateSearch(BaseStrategy):
 
         Args:
             db (SQLiteWrapper): SQLite wrapper for database operations.
-            dir_path (Path | None): Path to store vector data. Defaults to None.
+            dir_path (Path | None): Path to store vector data. None for in-memory storage.
             dim (int): Dimension of the vectors.
-            in_memory (bool): Whether using in-memory storage.
-            metric (Literal["euclidean", "dot"]): Distance metric to use.
+            metric (Literal["euclidean", "cosine"]): Distance metric to use.
             verbose (bool): Enable verbose output.
             ann_config (AnnConfig): ANN configuration.
         """
@@ -65,7 +63,6 @@ class ApproximateSearch(BaseStrategy):
             dir_path=dir_path,
             dim=dim,
             is_exact=False,
-            in_memory=in_memory,
             metric=metric,
             verbose=verbose,
         )

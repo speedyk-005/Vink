@@ -25,7 +25,6 @@ class ExactSearch(BaseStrategy):
         db: SQLiteWrapper,
         dir_path: Path | None,
         dim: int,
-        in_memory: bool,
         metric: Literal["euclidean", "cosine"],
         verbose: bool,
     ) -> None:
@@ -34,9 +33,8 @@ class ExactSearch(BaseStrategy):
 
         Args:
             db (SQLiteWrapper): SQLite wrapper for database operations.
-            dir_path (Path | None): Path to store vector data. Defaults to None.
+            dir_path (Path | None): Path to store vector data. None for in-memory storage.
             dim (int): Dimension of the vectors.
-            in_memory (bool): Whether using in-memory storage.
             metric (Literal["euclidean", "cosine"]): Distance metric to use.
             verbose (bool): Enable verbose output.
         """
@@ -45,7 +43,6 @@ class ExactSearch(BaseStrategy):
             dir_path=dir_path,
             dim=dim,
             is_exact=True,
-            in_memory=in_memory,
             metric=metric,
             verbose=verbose,
         )

@@ -19,7 +19,6 @@ def exact_search_strategy():
         db=SQLiteWrapper(":memory:", index_config={}),
         dir_path=None,
         dim=128,
-        in_memory=True,
         metric="euclidean",
         verbose=False,
     )
@@ -172,7 +171,6 @@ def test_save_load(sample_embeddings, tmp_path):
         db=db,
         dir_path=tmp_path,
         dim=128,
-        in_memory=False,
         metric="euclidean",
         verbose=False,
     )
@@ -193,7 +191,6 @@ def test_save_load(sample_embeddings, tmp_path):
         db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={}),
         dir_path=tmp_path,
         dim=128,
-        in_memory=False,
         metric="euclidean",
         verbose=False,
     )
