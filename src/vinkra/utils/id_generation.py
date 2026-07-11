@@ -1,6 +1,8 @@
-try:
+import sys
+
+if sys.version_info >= (3, 14):
     from uuid import uuid7
-except ImportError:
+else:
     from uuid6 import uuid7  # Python <3.14
 
 
