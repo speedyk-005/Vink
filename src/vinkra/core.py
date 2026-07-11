@@ -332,6 +332,11 @@ class VinkraDB:
         self._strategy.compact()
         log_info(self.verbose, "Compaction complete.")
 
+    def close(self) -> None:
+        """Save and close the database."""
+        self.save()
+        self._records_db.close()
+
     def save(self) -> None:
         """Save the index to disk."""
         log_info(self.verbose, "Saving index to {}.", self._dir_path)
@@ -550,4 +555,4 @@ class VinkraDB:
         if exc_type:
             logger.error(f"Transaction failed: {exc_val}")
             return False  # Tell python to reraise it
-        self.save()
+        self.close()

@@ -69,6 +69,10 @@ packages = ["vinkra", "vinkra.utils", "vinkra.strategies"]
 minversion = "7.4"
 addopts = "--cov=vinkra --cov-report=term-missing:skip-covered --durations=10"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:One of the clusters is empty:UserWarning",
+    "ignore:unclosed database:ResourceWarning",
+]
 python_files = "test_*.py"
 
 [tool.coverage.run]
