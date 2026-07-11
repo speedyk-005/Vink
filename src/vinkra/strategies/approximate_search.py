@@ -297,9 +297,10 @@ class ApproximateSearch(BaseStrategy):
             self._ensure_cache()
 
             if filters:
-                where_clause, params = self._filter_to_sql.translate(filters)
+                where_sql, params = self._filter_to_sql.translate(filters)
+                where_sql += " AND deleted = FALSE"
                 rows = self.db.fetch(
-                    where_sql=f"{where_clause} AND deleted = FALSE",
+                    where_sql=where_sql,
                     params=params,
                 )
                 match_set = {row[0] for row in rows}
@@ -327,7 +328,7 @@ class ApproximateSearch(BaseStrategy):
 
         # Query SQLite for full records of top_k IDs
         placeholders = ",".join("?" * len(ids))
-        where_sql = f"id IN ({placeholders})"
+        where_sql = f"WHERE id IN ({placeholders})"
         rows = self.db.fetch(where_sql=where_sql, params=ids, include_vectors=include_vectors)
         id_to_row = {row[0]: row for row in rows}
 

@@ -98,7 +98,7 @@ class FilterToSql:
             return "", []
 
         nl = "\n"
-        final_expr = f"{nl.join(f'({cond})' for cond in all_conditions)}"
+        final_expr = f"WHERE {nl.join(f'({cond})' for cond in all_conditions)}"
         return final_expr, query_params
 
     def _parse_expression(self, line: str) -> dict:

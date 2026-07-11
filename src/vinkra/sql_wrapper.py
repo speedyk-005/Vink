@@ -164,7 +164,7 @@ class SQLiteWrapper:
             JOIN content_fts5 USING (id)
         """
         if where_sql:
-            sql += f" WHERE {where_sql}"
+            sql += f" {where_sql}"
 
         cursor.execute(sql, params or [])
         return cursor.fetchall()
