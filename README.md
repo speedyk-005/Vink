@@ -349,8 +349,6 @@ Something go wrong?
   - [x] basic filters: Quick Comparison
   - [ ] Complex Filters: Content Matching, Null Checks, date/time literals, ...
 - [ ] Recovery: recover soft-deleted vectors
-- [ ] Collections: Multi-collection support for managing multiple indices
-- [ ] CLI - command-line interface
 - [ ] REST API: HTTP API for remote vector operations
 - [ ] Integrations: LangChain, LlamaIndex, and other integrations
 
