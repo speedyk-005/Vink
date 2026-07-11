@@ -1,14 +1,15 @@
 import shutil
 import time
+import numpy as np
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Thread
 from typing import Annotated, Callable, Literal
 
-import numpy as np
 from pydantic import Field, ValidationError
 from readerwriterlock import rwlock
 
+from vinkra import __version__
 from vinkra.exceptions import InvalidInputError, VectorDimensionError
 from vinkra.latency_predictor import LatencyPredictor
 from vinkra.models import AnnConfig, VectorRecord, VectorRecords
@@ -36,7 +37,7 @@ class VinkraDB:
     Index (RII) and Product Quantization (PQ) for efficient ANN.
 
     Note:
-        ANN switching is one-way — once switched, the system never switches back to exact search.
+        ANN switching is one-way. Once switched, the system never switches back to exact search.
 
     Features:
 
@@ -113,12 +114,11 @@ class VinkraDB:
         self.verbose = verbose
 
         self._strategy: BaseStrategy | None = None
-        self._latency_predictor: "LatencyPredictor" | None = None
+        self._latency_predictor: LatencyPredictor | None = None
 
-        # Default the config with standard settings if force_exact is not true
+        # Default the ann_config with standard settings if user doesn't provide their own
         if not (self._force_exact or self._ann_config):
             self._ann_config = AnnConfig()
-
         self._validate_config()
 
         if self._dir_path is not None:
@@ -133,7 +133,7 @@ class VinkraDB:
         self._records_db = SQLiteWrapper(
             self._records_db_path,
             index_config={
-                "dimension": str(self.dim),
+                "dim": str(self.dim),
                 "metric": self.metric,
                 "strategy": "exact",
             },
@@ -191,8 +191,8 @@ class VinkraDB:
                 and other stored metadata.
         """
         return {
-            "version": self._records_db["version"],
-            "dimension": self._records_db["dimension"],
+            "version": __version__,
+            "dim": self._records_db["dim"],
             "metric": self._records_db["metric"],
             "strategy": self._records_db["strategy"],
             "last_saved_at": self._records_db["last_saved_at"],
@@ -205,16 +205,16 @@ class VinkraDB:
         """
         Internal handshake to verify embedding dimensions and PQ constraints.
         """
+        if not self._force_exact:
+            self._ann_config.validate_vector_dim(self._dim)
+
         # Callback Handshake validation
         if self.embedding_callback:
             try:
                 raw_vec = self.embedding_callback("vinkra_warmup_test")
-
-                # This handles casting, shape normalization (1, d), and L2 projection
                 validated_vec = validate_embedding(
                     raw_vec, dim=self.dim, metric=self.metric
                 )
-
                 if validated_vec.shape[-1] != self._dim:
                     raise VectorDimensionError(
                         f"Embedding callback output dimension ({validated_vec.shape[-1]}) "
@@ -227,9 +227,6 @@ class VinkraDB:
                 raise InvalidInputError(
                     "Embedding callback crashed during handshake"
                 ) from e
-
-        if not self._force_exact:
-            self._ann_config.validate_vector_dim(self._dim)
 
     @validate_arguments
     def add(self, vector_records: list[dict]) -> list[str]:
@@ -255,22 +252,8 @@ class VinkraDB:
             log_info(self.verbose, "Input is empty, returning empty list.")
             return []
 
-        if (
-            self.count() == 0
-            and self._latency_predictor.predict(len(vector_records))
-            > self._ann_config.switch_latency_ms
-        ):
-            optimal = self._find_optimal_subset_size(len(vector_records))
-            log_info(
-                self.verbose,
-                "First batch exceeds threshold: splitting {} into {} + {}",
-                len(vector_records),
-                optimal,
-                len(vector_records) - optimal,
-            )
-            subset_records = vector_records[:optimal]
-            remainder_records = vector_records[optimal:]
-            return self.add(subset_records) + self.add(remainder_records)
+        if split := self._maybe_split_first_batch(vector_records):
+            return split
 
         try:
             validated = VectorRecords(
@@ -451,15 +434,20 @@ class VinkraDB:
         )
         return results
 
-    def _find_optimal_subset_size(self, n_total: int) -> int:
-        """Find max subset that stays under latency threshold via halving.
+    def _maybe_split_first_batch(self, vector_records: list[dict]) -> list[str] | None:
+        """Split the first batch if it would exceed the latency threshold.
 
-        Args:
-            n_total: Total vectors to add.
-
-        Returns:
-            Optimal subset size that stays under threshold.
+        Returns the concatenated result of adding each part separately
+            or None if the batch is small enough or the DB is not empty.
         """
+        if (
+            self.count() > 0
+            or self._latency_predictor.predict(len(vector_records))
+                <= self._ann_config.switch_latency_ms
+        ):
+            return None
+
+        # Find max subset that stays under latency threshold via halving.
         n_cand = n_total // 2
         while n_cand > 0:
             if (
@@ -468,8 +456,16 @@ class VinkraDB:
             ):
                 break
             n_cand //= 2
+        optimal = max(n_cand, 1)
 
-        return max(n_cand, 1)
+        log_info(
+            self.verbose,
+            "First batch exceeds threshold: splitting {} into {} + {}",
+            len(vector_records),
+            optimal,
+            len(vector_records) - optimal,
+        )
+        return self.add(vector_records[:optimal]) + self.add(vector_records[optimal:])
 
     def _should_switch(self) -> bool:
         """
@@ -488,7 +484,6 @@ class VinkraDB:
         if n_vecs < min_required:
             return False
 
-        # Use predictor for proactive switching
         predicted_latency = self._latency_predictor.predict(n_vecs)
         return predicted_latency >= cfg.switch_latency_ms
 
@@ -499,9 +494,10 @@ class VinkraDB:
         Runs in a daemon thread so add()/search() remain unblocked.
         Replays buffered records after the strategy switch completes.
         """
-        self._strategy._ensure_cache()
-        vectors = self._strategy.active_vectors_arr
-        ids = self._strategy.active_ids_arr
+        with self._strategy._rwlock.gen_rlock():
+            self._strategy._ensure_cache()
+            vectors = self._strategy.active_vectors_arr
+            ids = self._strategy.active_ids_arr
 
         from vinkra.strategies.approximate_search import ApproximateSearch
 
@@ -516,8 +512,6 @@ class VinkraDB:
         approx_strategy.fit(vectors, ids)
 
         log_info(self.verbose, "ANN index fit complete, switching strategy.")
-
-        # Automatically switch after successful build
         self._switch_to_approx_strategy(approx_strategy)
 
     def _switch_to_approx_strategy(self, strategy) -> None:

@@ -1,9 +1,9 @@
 import time
 from pathlib import Path
-
 import numpy as np
 import pytest
 
+from conftest import DB_CONFIG
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.exact_search import ExactSearch
 from vinkra.utils.id_generation import generate_id_bytes
@@ -15,7 +15,7 @@ IDS_TO_DELETE = [generate_id_bytes() for _ in range(2)]
 def exact_search_strategy():
     """Create an ExactSearchStrategy instance for testing."""
     return ExactSearch(
-        db=SQLiteWrapper(":memory:", index_config={}),
+        db=SQLiteWrapper(":memory:", index_config=DB_CONFIG),
         dir_path=None,
         dim=128,
         metric="euclidean",
@@ -167,7 +167,7 @@ def test_save_load(sample_embeddings, tmp_path):
     """Test that save persists data and load restores it correctly."""
     tmp_path = Path(tmp_path)
 
-    db = SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={})
+    db = SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config=DB_CONFIG)
     strategy = ExactSearch(
         db=db,
         dir_path=tmp_path,
@@ -190,7 +190,7 @@ def test_save_load(sample_embeddings, tmp_path):
     strategy.save()
 
     strategy2 = ExactSearch(
-        db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config={}),
+        db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config=DB_CONFIG),
         dir_path=tmp_path,
         dim=128,
         metric="euclidean",

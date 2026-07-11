@@ -74,23 +74,20 @@ class LatencyPredictor:
         self.y_buffer.append(max(actual_lat, 1e-4))
 
         if len(self.x_buffer) >= 3:
-            try:
-                # Bounds keep the 'Physics' sane despite hardware jitter
-                lower_bounds = [1e-10, 0.7]
-                upper_bounds = [0.1, 1.5]
+            # Bounds keep the 'Physics' sane despite hardware jitter
+            lower_bounds = [1e-10, 0.7]
+            upper_bounds = [0.1, 1.5]
 
-                new_popt, _ = curve_fit(
-                    self._power_law,
-                    list(self.x_buffer),
-                    list(self.y_buffer),
-                    p0=self._popt,
-                    bounds=(lower_bounds, upper_bounds),
-                    method="trf",
-                    maxfev=50,
-                )
-                self._popt = new_popt
-            except Exception:
-                pass
+            new_popt, _ = curve_fit(
+                self._power_law,
+                list(self.x_buffer),
+                list(self.y_buffer),
+                p0=self._popt,
+                bounds=(lower_bounds, upper_bounds),
+                method="trf",
+                maxfev=50,
+            )
+            self._popt = new_popt
 
     def _calibration_search(self, vectors: np.ndarray, query: np.ndarray) -> None:
         """Perform dummy search for timing calibration."""

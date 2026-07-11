@@ -1,14 +1,13 @@
 from pathlib import Path
-
 import pickle
 import numpy as np
 import pytest
 
+from conftest import DB_CONFIG
 from vinkra.exceptions import DatabaseCorruptedError
 from vinkra.models import AnnConfig
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.approximate_search import ApproximateSearch
-from vinkra.utils.id_generation import generate_id_bytes
 from vinkra.utils.id_generation import generate_id_bytes
 
 DB_PATH = "records.sqlite"
@@ -19,7 +18,7 @@ def _create_bare_approx_strategy(dir_path: Path) -> ApproximateSearch:
     config = AnnConfig(num_subspaces=4, codebook_size=8)
 
     return ApproximateSearch(
-        db=SQLiteWrapper(str(dir_path / DB_PATH), index_config={}),
+        db=SQLiteWrapper(str(dir_path / DB_PATH), index_config=DB_CONFIG),
         dir_path=dir_path,
         dim=128,
         metric="cosine",

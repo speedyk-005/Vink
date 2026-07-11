@@ -85,9 +85,6 @@ class ApproximateSearch(BaseStrategy):
         if self.dir_path is not None:
             self._ann_index_path = self.dir_path / "ann_index.pkl"
             self._ann_shadow_index_path = self.dir_path / "ann_index.pkl.tmp"
-        else:
-            self._ann_index_path = None
-            self._ann_shadow_index_path = None
 
     def fit(
         self,
@@ -172,6 +169,15 @@ class ApproximateSearch(BaseStrategy):
                 "The index parameters are not yet learned. Please run .fit() "
                 "on your training vectors before performing any index operations."
             )
+
+    def _swap_index(self) -> None:
+        """Replace shadow index with main index and fsync the directory."""
+        self._ann_shadow_index_path.replace(self._ann_index_path)
+        dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
 
     def _do_reconfigure(self) -> None:
         """Run index.reconfigure() in background thread."""
@@ -293,7 +299,7 @@ class ApproximateSearch(BaseStrategy):
             if filters:
                 where_clause, params = self._filter_to_sql.translate(filters)
                 rows = self.db.fetch(
-                    where=f"{where_clause} AND deleted = FALSE",
+                    where_sql=f"{where_clause} AND deleted = FALSE",
                     params=params,
                 )
                 match_set = {row[0] for row in rows}
@@ -321,8 +327,8 @@ class ApproximateSearch(BaseStrategy):
 
         # Query SQLite for full records of top_k IDs
         placeholders = ",".join("?" * len(ids))
-        where = f"id IN ({placeholders})"
-        rows = self.db.fetch(where=where, params=ids, include_vectors=include_vectors)
+        where_sql = f"id IN ({placeholders})"
+        rows = self.db.fetch(where_sql=where_sql, params=ids, include_vectors=include_vectors)
         id_to_row = {row[0]: row for row in rows}
 
         return self._build_results(ids, scores, id_to_row, include_vectors)
@@ -378,15 +384,7 @@ class ApproximateSearch(BaseStrategy):
 
         self.db.commit()
 
-        self._ann_shadow_index_path.replace(self._ann_index_path)
-
-        # Sync the directory
-        # This ensure the 'replace' above survives a power loss
-        dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
+        self._swap_index()
 
     def load(self, overwrite: bool) -> None:
         """Load the index from disk.
@@ -422,57 +420,57 @@ class ApproximateSearch(BaseStrategy):
 
     def _safe_load_ann_index(self):
         """Safely load the ann index with recovering step in case of desyncronisation"""
-        try:
-            with open(self._ann_index_path, "rb") as f:
+
+        def load_index(path):
+            with open(path, "rb") as f:
                 index = pickle.load(f)
 
-            assert len(self._all_ids) == index.N
+            if len(self._all_ids) != index.N:
+                raise DatabaseCorruptedError(
+                    "ANN index and database records are out of sync"
+                )
 
-            self.index = index
+            return index
 
-        except (pickle.UnpicklingError, EOFError, AttributeError, AssertionError):
+        try:
+            self.index = load_index(self._ann_index_path)
+            return
+        except (
+            FileNotFoundError,
+            pickle.UnpicklingError,
+            EOFError,
+            AttributeError,
+            DatabaseCorruptedError,
+        ):
             # Recover from partial save
             log_info(
                 self.verbose, "Partial save detected... Recovering from backup file"
             )
 
-            try:
-                with open(self._ann_shadow_index_path, "rb") as f:
-                    temp_index = pickle.load(f)
+        try:
+            self.index = load_index(self._ann_shadow_index_path)
+            self._swap_index()
 
-                assert len(self._all_ids) == temp_index.N
+        except FileNotFoundError as e:
+            raise DatabaseCorruptedError(
+                "Index recovery failed - backup file not found"
+            ) from e
 
-                self.index = temp_index
-                self._ann_shadow_index_path.replace(self._ann_index_path)
-
-                # Sync the directory
-                dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
-                try:
-                    os.fsync(dir_fd)
-                finally:
-                    os.close(dir_fd)
-
-            # Rare cases
-            except FileNotFoundError as e:
-                raise DatabaseCorruptedError(
-                    "Index recovery failed - backup file not found"
-                ) from e
-
-            except (
-                pickle.UnpicklingError,
-                EOFError,
-                AttributeError,
-                AssertionError,
-            ) as e:
-                self._ann_shadow_index_path.unlink()  # Clean up the broken file
-                raise DatabaseCorruptedError(
-                    "Index recovery failed - both index and backup files are corrupted"
-                ) from e
+        except (
+            pickle.UnpicklingError,
+            EOFError,
+            AttributeError,
+            DatabaseCorruptedError,
+        ) as e:
+            self._ann_shadow_index_path.unlink(missing_ok=True)
+            raise DatabaseCorruptedError(
+                "Index recovery failed - both index and backup files are corrupted"
+            ) from e
 
     def _query_index(
         self,
         query_vec: np.ndarray,
-        ids: list[bytes],
+        id_vecs: np.ndarray,
         top_k: int,
     ) -> tuple[list[bytes], np.ndarray]:
         """
@@ -480,7 +478,7 @@ class ApproximateSearch(BaseStrategy):
 
         Args:
             query_vec: Query vector with shape (1, d).
-            ids: Corresponding IDs for each vector.
+            id_vecs: IDs corresponding to each vector, shape (n,).
             top_k: Number of top results to return.
 
         Returns:
@@ -493,7 +491,7 @@ class ApproximateSearch(BaseStrategy):
 
         # Map application IDs to internal index offsets
         target_indices = np.array(
-            [self._id_to_idx[uid] for uid in ids if uid in self._id_to_idx]
+            [self._id_to_idx[uid] for uid in id_vecs if uid in self._id_to_idx]
         )
 
         if len(target_indices) == 0:

@@ -74,12 +74,11 @@ class ExactSearch(BaseStrategy):
         self.active_vectors_arr = np.vstack(self._all_vectors)[active_indices]
         self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
 
-    def add(self, vector_records: list[dict], is_buffer: bool = False) -> list[str]:
+    def add(self, vector_records: list[dict]) -> list[str]:
         """Add vectors to the index.
 
         Args:
             vector_records: List of dicts with 'id', 'embedding' keys.
-            is_buffer: If True, records are already in SQLite. Defaults to False.
 
         Returns:
             List of assigned UUIDv7 IDs.
@@ -100,8 +99,7 @@ class ExactSearch(BaseStrategy):
 
                 assigned_ids.append(self._bytes_to_uuid_str(record["id"]))
 
-            if not is_buffer:
-                self.db.insert(vector_records)
+            self.db.insert(vector_records)
 
         return assigned_ids
 
@@ -150,7 +148,7 @@ class ExactSearch(BaseStrategy):
             if filters:
                 where_clause, params = self._filter_to_sql.translate(filters)
                 rows = self.db.fetch(
-                    where=f"{where_clause} AND deleted = FALSE",
+                    where_sql=f"{where_clause} AND deleted = FALSE",
                     params=params,
                 )
                 match_set = {row[0] for row in rows}
@@ -179,8 +177,8 @@ class ExactSearch(BaseStrategy):
 
         # Query SQLite for full records of top_k IDs
         placeholders = ",".join("?" * len(ids))
-        where = f"id IN ({placeholders})"
-        rows = self.db.fetch(where=where, params=ids, include_vectors=include_vectors)
+        where_sql = f"id IN ({placeholders})"
+        rows = self.db.fetch(where_sql=where_sql, params=ids, include_vectors=include_vectors)
         id_to_row = {row[0]: row for row in rows}
 
         return self._build_results(ids, scores, id_to_row, include_vectors)
@@ -228,7 +226,7 @@ class ExactSearch(BaseStrategy):
             rows = cursor.fetchall()
 
             self._all_ids = [row[0] for row in rows]
-            self._all_vectors = np.vstack([row[1] for row in rows])
+            self._all_vectors = np.vstack([np.frombuffer(row[1], dtype=np.float32) for row in rows])
             self._mask = [bool(row[2]) for row in rows]
             self._id_to_idx = {
                 id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)
@@ -242,30 +240,42 @@ class ExactSearch(BaseStrategy):
         self,
         query_vec: np.ndarray,
         vectors: np.ndarray,
-        ids: list[bytes],
+        id_vecs: np.ndarray,
         top_k: int,
-    ) -> tuple[list[bytes], np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Compute cosine similarity between query vector and provided vectors.
 
         Args:
             query_vec: Query vector with shape (1, d).
             vectors: Vectors to compute similarity with, shape (n, d).
-            ids: Corresponding IDs for each vector.
+            id_vecs: IDs corresponding to each vector, shape (n,).
             top_k: Number of top results to return.
 
         Returns:
             Top-k IDs and similarity scores,
                 ordered by similarity (descending).
         """
-        if not ids.any():
-            return [], np.array([])
+        if len(id_vecs) == 0:
+            return np.array([]), np.array([])
 
-        # Use dot product since both query and vectors are already L2-normalized
+        # Query and stored vectors are already L2-normalized, so cosine
+        # similarity is equivalent to a dot product.
         similarities = (vectors @ query_vec.T).flatten()
-        sorted_indices = np.argsort(similarities)[::-1][:top_k]
 
-        top_ids = [ids[i] for i in sorted_indices]
+        # Avoid sorting every similarity score. Partition only finds the
+        # top-k candidates. The candidates are sorted afterward to preserve
+        # descending similarity order.
+        candidate_indices = np.argpartition(
+            similarities,
+            -top_k,
+        )[-top_k:]
+
+        sorted_indices = candidate_indices[
+            np.argsort(similarities[candidate_indices])[::-1]
+        ]
+
+        top_ids = [id_vecs[i] for i in sorted_indices]
         top_scores = similarities[sorted_indices]
 
         return top_ids, top_scores
@@ -274,30 +284,40 @@ class ExactSearch(BaseStrategy):
         self,
         query_vec: np.ndarray,
         vectors: np.ndarray,
-        ids: list[bytes],
+        id_vecs: np.ndarray,
         top_k: int,
-    ) -> tuple[list[bytes], np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Compute Euclidean distance between query vector and provided vectors.
 
         Args:
             query_vec: Query vector with shape (1, d).
             vectors: Vectors to compute distance with, shape (n, d).
-            ids: Corresponding IDs for each vector.
+            id_vecs: IDs corresponding to each vector, shape (n,).
             top_k: Number of top results to return.
 
         Returns:
-            Top-k IDs and distance scores, ordered by distance
-                (ascending, closest first).
+            Top-k IDs and distance scores,
+                ordered by distance (ascending).
         """
-        if not ids.any():
-            return [], np.array([])
+        if len(id_vecs) == 0:
+            return np.array([]), np.array([])
 
         distances = np.sqrt(np.sum((vectors - query_vec) ** 2, axis=1))
 
-        # Sort by distance in ascending order (closest first)
-        indices = np.argsort(distances)[:top_k]
-        top_ids = [ids[i] for i in indices]
-        top_scores = distances[indices]
+        # Partition finds the nearest top-k candidates without fully sorting
+        # all distances. Only the selected candidates are sorted to guarantee
+        # ascending distance order.
+        candidate_indices = np.argpartition(
+            distances,
+            top_k - 1,
+        )[:top_k]
+
+        sorted_indices = candidate_indices[
+            np.argsort(distances[candidate_indices])
+        ]
+
+        top_ids = [id_vecs[i] for i in sorted_indices]
+        top_scores = distances[sorted_indices]
 
         return top_ids, top_scores

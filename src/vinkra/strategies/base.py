@@ -24,7 +24,6 @@ class BaseStrategy(ABC):
         dim: int,
         metric: Literal["euclidean", "cosine"],
         verbose: bool,
-        **kwargs,
     ) -> None:
         """
         Initialize the strategy.
@@ -35,7 +34,6 @@ class BaseStrategy(ABC):
             dim: Dimension of the vectors.
             metric: Distance metric to use.
             verbose: Enable verbose output.
-            **kwargs: Additional keyword arguments for subclasses.
         """
         self.db = db
         self.dir_path = dir_path
@@ -45,14 +43,12 @@ class BaseStrategy(ABC):
         self._filter_to_sql = FilterToSql()
 
     @abstractmethod
-    def add(self, vector_records: list[dict], is_buffer: bool = False) -> list[str]:
+    def add(self, vector_records: list[dict]) -> list[str]:
         """Add vectors to the index.
 
         Args:
             vector_records: List of dict records with 'id', 'content',
                 'metadata', and 'embedding' keys.
-            is_buffer: If True, records are already in SQLite (buffer replay).
-                Subclasses should skip re-inserting to avoid duplicate key errors.
 
         Returns:
             List of assigned UUIDv7 IDs.
@@ -110,16 +106,11 @@ class BaseStrategy(ABC):
         """
         pass
 
-    def _bytes_to_uuid_str(self, id_bytes: bytes) -> str:
-        """Convert UUIDv7 bytes to UUID string format.
-
-        Args:
-            id_bytes: 16-byte UUIDv7.
-
-        Returns:
-            UUID string in standard format.
-        """
-        return str(UUID(bytes=id_bytes))
+    def _bytes_to_uuid_str(self, id: str | bytes) -> str:
+        """Convert UUIDv7 bytes to UUID string format."""
+        if isinstance(id, bytes):
+            return str(UUID(bytes=id))
+        return id
 
     def _build_results(
         self,

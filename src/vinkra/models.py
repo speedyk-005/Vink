@@ -101,21 +101,16 @@ class VectorRecords(BaseModel):
 
     @model_validator(mode="after")
     def validate_dimensions(self) -> "VectorRecords":
-        """Ensure all embeddings match the specified dimension and normalize if needed."""
+        """Ensure all embeddings existed and validated."""
         for i, record in enumerate(self.records):
-            if record.embedding is None and self.embedding_callback is not None:
-                record.embedding = validate_embedding(
-                    self.embedding_callback(record.content),
-                    dim=self.dim,
-                    metric=self.metric,
-                )
+            if record.embedding is None:
+                if self.embedding_callback is None:
+                    raise InvalidInputError(
+                        f"Record[{i}] is missing an embedding and no default callback is set."
+                    )
+                record.embedding = self.embedding_callback(record.content)
 
-            if record.embedding is not None:
-                record.embedding = validate_embedding(
-                    record.embedding, dim=self.dim, metric=self.metric
-                )
-            else:
-                raise InvalidInputError(
-                    f"Record[{i}] is missing an embedding and no default callback is set."
-                )
+            record.embedding = validate_embedding(
+                record.embedding, dim=self.dim, metric=self.metric
+            )
         return self

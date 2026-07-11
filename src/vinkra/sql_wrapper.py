@@ -1,7 +1,7 @@
 import json
 import sqlite3
 from importlib.metadata import PackageNotFoundError, version
-from typing import Generator, Literal
+from typing import Iterator, Literal
 
 from vinkra.utils.input_validation import validate_arguments
 
@@ -13,11 +13,6 @@ if sqlite3.sqlite_version_info < (3, 45, 0):
             f"Your SQLite is {sqlite3.sqlite_version} but 3.45.0+ is required for JSONB support. "
             "Fix it: pip install pysqlite3"
         ) from None
-
-try:
-    __version__ = version("vinkra")
-except PackageNotFoundError:
-    __version__ = "0.0.0"
 
 
 class SQLiteWrapper:
@@ -35,13 +30,10 @@ class SQLiteWrapper:
         self._conn = sqlite3.connect(path, check_same_thread=False, timeout=10)
         self._conn.execute("PRAGMA journal_mode=WAL;")
         self._ensure_tables_exist()
-
         self._validate_config(index_config)
 
-        index_config["version"] = __version__
         for k, v in index_config.items():
             self[k] = v
-
         self._conn.commit()
 
     @property
@@ -55,13 +47,19 @@ class SQLiteWrapper:
 
     def _ensure_tables_exist(self) -> None:
         cursor = self._conn.cursor()
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS db_meta (key TEXT PRIMARY KEY, value TEXT)"
-        )
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS db_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
 
-        cursor.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS content_fts5 USING fts5(id, content)"
-        )
+        cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS content_fts5 USING fts5(
+                id UNINDEXED,
+                content
+            )
+         """)
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS vec_records (
@@ -80,14 +78,11 @@ class SQLiteWrapper:
 
     def _validate_config(self, new_config: dict) -> None:
         """Validate incoming config against stored db_meta if database exists."""
-        if "dimension" not in new_config or "metric" not in new_config:
-            return
-
-        stored_dim = self["dimension"]
+        stored_dim = self["dim"]
         stored_metric = self["metric"]
 
-        new_dim = new_config["dimension"]
-        if stored_dim is not None and str(new_dim) != stored_dim:
+        new_dim = new_config["dim"]
+        if stored_dim is not None and new_dim != stored_dim:
             raise ValueError(
                 f"Dimension mismatch: cannot open existing database with "
                 f"dimension {new_dim}, stored dimension is {stored_dim}"
@@ -113,7 +108,6 @@ class SQLiteWrapper:
             is_buffer: If True, marks all vec_records as buffered.
         """
         cursor = self._conn.cursor()
-
         records = [
             {
                 "id": r["id"],
@@ -125,12 +119,21 @@ class SQLiteWrapper:
         ]
 
         cursor.executemany(
-            "INSERT OR REPLACE INTO vec_records (id, metadata, embedding, buffered) VALUES (?, jsonb(?), ?, ?)",
-            [(r["id"], r["metadata"], r["embedding"], is_buffer) for r in records],
-        )
-        cursor.executemany(
             "INSERT OR REPLACE INTO content_fts5 (id, content) VALUES (?, ?)",
             [(r["id"], r["content"]) for r in records],
+        )
+        cursor.executemany(
+            """
+            INSERT INTO vec_records
+            (id, metadata, embedding, buffered)
+            VALUES (?, jsonb(?), ?, ?)
+            ON CONFLICT(id)
+            DO UPDATE SET
+                metadata=excluded.metadata,
+                embedding=excluded.embedding,
+                buffered=excluded.buffered
+            """,
+            [(r["id"], r["metadata"], r["embedding"], is_buffer) for r in records],
         )
 
     @validate_arguments
@@ -147,7 +150,7 @@ class SQLiteWrapper:
     def fetch(
         self,
         *,
-        where: str | None = None,
+        where_sql: str | None = None,
         params: list | tuple | None = None,
         include_vectors: bool = False,
     ):
@@ -160,8 +163,8 @@ class SQLiteWrapper:
             FROM vec_records
             JOIN content_fts5 USING (id)
         """
-        if where:
-            sql += f" WHERE {where}"
+        if where_sql:
+            sql += f" WHERE {where_sql}"
 
         cursor.execute(sql, params or [])
         return cursor.fetchall()
@@ -196,10 +199,15 @@ class SQLiteWrapper:
         cursor.execute("DELETE FROM vec_records WHERE deleted = TRUE")
 
     @validate_arguments
-    def iter_embeddings(self, batch_size: int = 50000) -> Generator[list, None, None]:
+    def iter_embeddings(self) -> Iterator[list[bytes]]:
         """Iterate over embeddings in batches."""
         cursor = self._conn.cursor()
         cursor.execute("SELECT embedding FROM vec_records")
+
+        # Adaptive batch size for embedding scans.
+        # Targets ~64MB of raw float32 embedding data per fetch.
+        dim = self["dim"]
+        batch_size = max(1, (64 * 1024 * 1024) // (dim * 4))
 
         while True:
             rows = cursor.fetchmany(batch_size)
@@ -211,8 +219,11 @@ class SQLiteWrapper:
         """Get a metadata value from db_meta table."""
         cursor = self._conn.cursor()
         cursor.execute("SELECT value FROM db_meta WHERE key = ?", (key,))
-        result = cursor.fetchone()
-        return result[0] if result else None
+        fetched = cursor.fetchone()
+        res = fetched[0] if fetched else None
+        if key == "dim" and res is not None:
+            res = int(res)
+        return res
 
     def __setitem__(self, key: str, value: str) -> None:
         """Set a metadata value in db_meta table."""
