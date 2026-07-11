@@ -14,7 +14,6 @@ from vinkra.exceptions import (
     IndexNotFittedError,
     InvalidInputError,
 )
-from vinkra.filter_parser import FilterToSql
 from vinkra.models import AnnConfig, VectorRecord
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.base import BaseStrategy
@@ -68,7 +67,6 @@ class ApproximateSearch(BaseStrategy):
         self._ann_config = ann_config
 
         self._rwlock = rwlock.RWLockFair()
-        self._filter_to_sql = FilterToSql()
         self._delta_since_reconfig = 0
         self.is_reconfig = False
         self.is_compacting = False

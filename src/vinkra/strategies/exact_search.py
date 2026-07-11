@@ -4,7 +4,6 @@ from typing import Literal
 import numpy as np
 from readerwriterlock import rwlock
 
-from vinkra.filter_parser import FilterToSql
 from vinkra.models import VectorRecord
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.base import BaseStrategy
@@ -47,7 +46,6 @@ class ExactSearch(BaseStrategy):
         )
 
         self._rwlock = rwlock.RWLockFair()
-        self._filter_to_sql = FilterToSql()
 
         self._all_vectors: list[np.ndarray] = []
         self._all_ids: list[bytes] = []

@@ -6,6 +6,7 @@ from uuid import UUID
 
 import numpy as np
 
+from vinkra.filter_parser import FilterToSql
 from vinkra.models import VectorRecord
 from vinkra.sql_wrapper import SQLiteWrapper
 
@@ -42,6 +43,7 @@ class BaseStrategy(ABC):
         self.dim = dim
         self.metric = metric
         self.verbose = verbose
+        self._filter_to_sql = FilterToSql()
 
     @abstractmethod
     def add(self, vector_records: list[VectorRecord], is_buffer: bool = False) -> list[str]:
