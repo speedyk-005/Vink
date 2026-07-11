@@ -171,11 +171,10 @@ class SQLiteWrapper:
         """Count vectors in the database.
 
         Args:
-            status (Literal["active", "deleted"], optional): Which vectors to count.
-                Count all if not provided.
+            status: Which vectors to count. Count all if not provided.
 
         Returns:
-            int: Count of vectors.
+            Count of vectors.
         """
         cursor = self._conn.cursor()
         if status == "active":

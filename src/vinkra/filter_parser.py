@@ -56,12 +56,12 @@ class FilterToSql:
         Convert a list of filter strings into a safe SQLite query.
 
         Args:
-            filters (list[str]): List of filter strings.
+            filters: List of filter strings.
 
         Returns:
-            tuple[str, list]: A tuple containing:
-                - query (str): The generated SQLite condition clause.
-                - params (list): List of parameters to safely bind to the query.
+            A tuple containing:
+                - query: The generated SQLite condition clause.
+                - params: List of parameters to safely bind to the query.
         """
         all_conditions = []
         query_params = []
@@ -104,9 +104,9 @@ class FilterToSql:
     def _parse_expression(self, line: str) -> dict:
         """Parse a single filter expression into a sequence of tokens.
         Args:
-            line (str): Filter expression string.
+            line: Filter expression string.
         Returns:
-            dict: Success dict with 'sequence' key, or error dict with 'expect' key.
+            Success dict with 'sequence' key, or error dict with 'expect' key.
         """
         curr_col = 0
         curr_substring = line

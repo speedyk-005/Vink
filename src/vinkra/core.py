@@ -86,23 +86,23 @@ class VinkraDB:
             Everything else is read-only properties.
 
         Args:
-            dim (int): Dimension of the vectors. Must be higher than 16.
-            dir_path (str | Path | None): Directory path to store vector data. Contains the pickled index
+            dim: Dimension of the vectors. Must be higher than 16.
+            dir_path: Directory path to store vector data. Contains the pickled index
                 and SQLite database for vector records.
                 Pass None for volatile in-memory storage.
-            metric (Literal["euclidean", "cosine"], optional): Distance metric to use.
+            metric: Distance metric to use.
                 Defaults to "euclidean".
-            force_exact (bool, optional): If True, only exact calculation is used.
+            force_exact: If True, only exact calculation is used.
                 If False, switches between exact and ANN based on runtime calibration.
                 Defaults to False.
-            ann_config (AnnConfig, optional): Configuration for approximate nearest neighbor search.
+            ann_config: Configuration for approximate nearest neighbor search.
                 Used during switching and compacting. Defaults to ANNConfig with standard settings.
                 Only applicable when force_exact is False.
-            embedding_callback (Callable, optional): Callback function to generate embeddings
+            embedding_callback: Callback function to generate embeddings
                 from content. If provided, 'embedding' key is optional in
                 vector records as it will be generated via this callback. Defaults to None.
-            overwrite (bool, optional): Overwrite existing index if exists. Defaults to False.
-            verbose (bool, optional): Enable verbose output. Defaults to False.
+            overwrite: Overwrite existing index if exists. Defaults to False.
+            verbose: Enable verbose output. Defaults to False.
         """
         self._dir_path = Path(dir_path) if dir_path else None
         self._dim = dim
@@ -176,11 +176,10 @@ class VinkraDB:
         """Count vectors in the database.
 
         Args:
-            status (Literal["active", "deleted"], optional): Which vectors to count.
-                Count all if not provided.
+            status: Which vectors to count. Count all if not provided.
 
         Returns:
-            int: Count of vectors.
+            Count of vectors.
         """
         return self._records_db.count(status)
 
@@ -188,8 +187,7 @@ class VinkraDB:
         """Return database statistics and metadata.
 
         Returns:
-            dict: Database metadata including version, dimension, metric, strategy,
-                last_saved_at, last_deleted_at, active_count, deleted_count,
+            Database metadata including version, dimension, metric, strategy,last_saved_at, last_deleted_at, active_count, deleted_count,
                 and other stored metadata.
         """
         return {
@@ -238,7 +236,7 @@ class VinkraDB:
         """Add vectors to the index.
 
         Args:
-            vector_records (list[dict]): List of dicts with 'content', 'metadata',
+            vector_records: List of dicts with 'content', 'metadata',
                 and 'embedding' keys. 'id' is optional
                 If not provided, a UUIDv7 will be auto-generated.
 
@@ -248,7 +246,7 @@ class VinkraDB:
             call. Subsequent batches can be any size.
 
         Returns:
-            list[str]: List of assigned UUIDv7 IDs.
+            List of assigned UUIDv7 IDs.
 
         Raises:
             InvalidInputError: If validation fails or if the first batch exceeds 10,000 vectors.
@@ -320,7 +318,7 @@ class VinkraDB:
         """Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids (list[str]): List of UUIDv7 IDs to soft-delete.
+            ids: List of UUIDv7 IDs to soft-delete.
         """
         log_info(self.verbose, "Soft-deleting {} vectors from index.", len(ids))
 
@@ -362,7 +360,7 @@ class VinkraDB:
         """Load the index from disk.
 
         Args:
-            overwrite (bool): If True, replace in-memory state with loaded data.
+            overwrite: If True, replace in-memory state with loaded data.
                 Defaults to False.
         """
         log_info(self.verbose, "Loading index from {}.", self._dir_path)
@@ -406,16 +404,16 @@ class VinkraDB:
         """Search for k nearest neighbors using the configured metric.
 
         Args:
-            query_vec (list[float] | np.ndarray): The query vector as a list of floats,
+            query_vec: The query vector as a list of floats,
                 1D numpy array (d,), or 2D numpy array (1, d).
-            top_k (int, optional): Number of nearest neighbors to return. Defaults to 10.
-            include_vectors (bool, optional): If True, include 'embedding' key in results.
+            top_k: Number of nearest neighbors to return. Defaults to 10.
+            include_vectors: If True, include 'embedding' key in results.
                 Defaults to False.
-            filters (list[str] | None, optional): Filter expressions to apply before scoring.
+            filters: Filter expressions to apply before scoring.
                 E.g., ["category == 'science'", "price >= 10"].
 
         Returns:
-            list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
+            List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
         log_info(

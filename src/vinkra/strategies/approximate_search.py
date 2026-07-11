@@ -50,12 +50,12 @@ class ApproximateSearch(BaseStrategy):
         Initialize the ApproximateSearch.
 
         Args:
-            db (SQLiteWrapper): SQLite wrapper for database operations.
-            dir_path (Path | None): Path to store vector data. None for in-memory storage.
-            dim (int): Dimension of the vectors.
-            metric (Literal["euclidean", "cosine"]): Distance metric to use.
-            verbose (bool): Enable verbose output.
-            ann_config (AnnConfig): ANN configuration.
+            db: SQLite wrapper for database operations.
+            dir_path: Path to store vector data. None for in-memory storage.
+            dim: Dimension of the vectors.
+            metric: Distance metric to use.
+            verbose: Enable verbose output.
+            ann_config: ANN configuration.
         """
         super().__init__(
             db=db,
@@ -102,9 +102,9 @@ class ApproximateSearch(BaseStrategy):
         The quantizer is trained with randomly sampled vectors.
 
         Args:
-            vectors (np.ndarray): A 2D array of shape (N, D) representing the N vectors
+            vectors: A 2D array of shape (N, D) representing the N vectors
                 of dimensionality D to be indexed.
-            active_ids_arr (np.ndarray): Array of active IDs corresponding to the vectors.
+            active_ids_arr: Array of active IDs corresponding to the vectors.
         """
         log_info(self.verbose, "Starting ANN index fit with {} vectors.", len(vectors))
 
@@ -201,10 +201,10 @@ class ApproximateSearch(BaseStrategy):
         """Add vectors to the index.
 
         Args:
-            vector_records (list[dict]): List of dicts with 'id', 'embedding' keys.
+            vector_records: List of dicts with 'id', 'embedding' keys.
 
         Returns:
-            list[str]: List of assigned UUIDv7 IDs.
+            List of assigned UUIDv7 IDs.
 
         Raises:
             IndexNotFittedError: If called on an index that has not been fitted yet.
@@ -245,7 +245,7 @@ class ApproximateSearch(BaseStrategy):
         Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids (list[bytes]): List of UUIDv7 IDs to soft-delete.
+            ids: List of UUIDv7 IDs to soft-delete.
 
         Raises:
             IndexNotFittedError: If called on an index that has not been fitted yet.
@@ -273,14 +273,14 @@ class ApproximateSearch(BaseStrategy):
         """Search for k nearest neighbors using the configured metric.
 
         Args:
-            query_vec (np.ndarray): The query vector as a 2D numpy array with shape (1, d).
-            top_k (int, optional): Number of nearest neighbors to return. Defaults to 10.
-            include_vectors (bool, optional): If True, include 'embedding' key in results.
+            query_vec: The query vector as a 2D numpy array with shape (1, d).
+            top_k: Number of nearest neighbors to return. Defaults to 10.
+            include_vectors: If True, include 'embedding' key in results.
                 Defaults to False.
-            filters (list[str] | None, optional): Filter expressions to apply before scoring.
+            filters: Filter expressions to apply before scoring.
 
         Returns:
-            list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
+            List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
 
         Raises:
@@ -392,7 +392,7 @@ class ApproximateSearch(BaseStrategy):
         """Load the index from disk.
 
         Args:
-            overwrite (bool): If True, replace in-memory state with loaded data.
+            overwrite: If True, replace in-memory state with loaded data.
         """
         if not (self._ann_index_path and self._ann_index_path.exists()):
             log_info(self.verbose, "No ANN index file found, skipping index load.")
@@ -479,12 +479,12 @@ class ApproximateSearch(BaseStrategy):
         Search for nearest neighbors to the query vector via the Rii engine.
 
         Args:
-            query_vec (np.ndarray): Query vector with shape (1, d).
-            ids (list[bytes]): Corresponding IDs for each vector.
-            top_k (int): Number of top results to return.
+            query_vec: Query vector with shape (1, d).
+            ids: Corresponding IDs for each vector.
+            top_k: Number of top results to return.
 
         Returns:
-            tuple[list[bytes], np.ndarray]: Top-k IDs and distance scores, ordered by distance
+            Top-k IDs and distance scores, ordered by distance
                 (ascending, closest first).
         """
         # Ensure query vector is 1D (rii expects 1D array)

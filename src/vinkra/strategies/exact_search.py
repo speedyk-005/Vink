@@ -31,11 +31,11 @@ class ExactSearch(BaseStrategy):
         Initialize the ExactSearch.
 
         Args:
-            db (SQLiteWrapper): SQLite wrapper for database operations.
-            dir_path (Path | None): Path to store vector data. None for in-memory storage.
-            dim (int): Dimension of the vectors.
-            metric (Literal["euclidean", "cosine"]): Distance metric to use.
-            verbose (bool): Enable verbose output.
+            db: SQLite wrapper for database operations.
+            dir_path: Path to store vector data. None for in-memory storage.
+            dim: Dimension of the vectors.
+            metric: Distance metric to use.
+            verbose: Enable verbose output.
         """
         super().__init__(
             db=db,
@@ -78,11 +78,11 @@ class ExactSearch(BaseStrategy):
         """Add vectors to the index.
 
         Args:
-            vector_records (list[dict]): List of dicts with 'id', 'embedding' keys.
-            is_buffer (bool): If True, records are already in SQLite. Defaults to False.
+            vector_records: List of dicts with 'id', 'embedding' keys.
+            is_buffer: If True, records are already in SQLite. Defaults to False.
 
         Returns:
-            list[str]: List of assigned UUIDv7 IDs.
+            List of assigned UUIDv7 IDs.
         """
         with self._rwlock.gen_wlock():
             assigned_ids = []
@@ -110,7 +110,7 @@ class ExactSearch(BaseStrategy):
         Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids (list[bytes]): List of UUIDv7 IDs to soft-delete.
+            ids: List of UUIDv7 IDs to soft-delete.
         """
         with self._rwlock.gen_wlock():
             for id_bytes in ids:
@@ -134,14 +134,14 @@ class ExactSearch(BaseStrategy):
         """Search for k nearest neighbors using the configured metric.
 
         Args:
-            query_vec (np.ndarray): The query vector as a 2D numpy array with shape (1, d).
-            top_k (int, optional): Number of nearest neighbors to return. Defaults to 10.
-            include_vectors (bool, optional): If True, include 'embedding' key in results.
+            query_vec: The query vector as a 2D numpy array with shape (1, d).
+            top_k: Number of nearest neighbors to return. Defaults to 10.
+            include_vectors: If True, include 'embedding' key in results.
                 Defaults to False.
-            filters (list[str] | None, optional): Filter expressions to apply before scoring.
+            filters: Filter expressions to apply before scoring.
 
         Returns:
-            list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
+            List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
         with self._rwlock.gen_rlock():
@@ -212,7 +212,7 @@ class ExactSearch(BaseStrategy):
         """Load the index from SQLite.
 
         Args:
-            overwrite (bool): If True, replace in-memory state with loaded data.
+            overwrite: If True, replace in-memory state with loaded data.
         """
         if not overwrite and self._all_ids:
             log_info(self.verbose, "Index already loaded, skipping.")
@@ -249,13 +249,13 @@ class ExactSearch(BaseStrategy):
         Compute cosine similarity between query vector and provided vectors.
 
         Args:
-            query_vec (np.ndarray): Query vector with shape (1, d).
-            vectors (np.ndarray): Vectors to compute similarity with, shape (n, d).
-            ids (list[bytes]): Corresponding IDs for each vector.
-            top_k (int): Number of top results to return.
+            query_vec: Query vector with shape (1, d).
+            vectors: Vectors to compute similarity with, shape (n, d).
+            ids: Corresponding IDs for each vector.
+            top_k: Number of top results to return.
 
         Returns:
-            tuple[list[bytes], np.ndarray]: Top-k IDs and similarity scores,
+            Top-k IDs and similarity scores,
                 ordered by similarity (descending).
         """
         if not ids.any():
@@ -281,13 +281,13 @@ class ExactSearch(BaseStrategy):
         Compute Euclidean distance between query vector and provided vectors.
 
         Args:
-            query_vec (np.ndarray): Query vector with shape (1, d).
-            vectors (np.ndarray): Vectors to compute distance with, shape (n, d).
-            ids (list[bytes]): Corresponding IDs for each vector.
-            top_k (int): Number of top results to return.
+            query_vec: Query vector with shape (1, d).
+            vectors: Vectors to compute distance with, shape (n, d).
+            ids: Corresponding IDs for each vector.
+            top_k: Number of top results to return.
 
         Returns:
-            tuple[list[bytes], np.ndarray]: Top-k IDs and distance scores, ordered by distance
+            Top-k IDs and distance scores, ordered by distance
                 (ascending, closest first).
         """
         if not ids.any():

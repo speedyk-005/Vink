@@ -21,8 +21,8 @@ class LatencyPredictor:
         """Initialize latency predictor with Power Law model.
 
         Args:
-            dim (int): Vector dimensionality for calibration search.
-            window_size (int): Number of (n_vectors, latency) pairs to keep for online tuning.
+            dim: Vector dimensionality for calibration search.
+            window_size: Number of (n_vectors, latency) pairs to keep for online tuning.
         """
         self._dim = dim
         self.x_buffer = deque(maxlen=window_size)
@@ -60,8 +60,8 @@ class LatencyPredictor:
         """Update model parameters with actual latency measurement.
 
         Args:
-            n_vecs (int): Current number of vectors in the index.
-            actual_lat (float): Actual measured latency in milliseconds.
+            n_vecs: Current number of vectors in the index.
+            actual_lat: Actual measured latency in milliseconds.
         """
         # Outlier smoothing: blend with prediction to avoid over-reaction to spikes
         if len(self.x_buffer) >= 2:
@@ -101,12 +101,12 @@ class LatencyPredictor:
         """Power Law function: y = a * x^b.
 
         Args:
-            x (float): Input value (number of vectors).
-            a (float): Scale coefficient.
-            b (float): Exponent coefficient.
+            x: Input value (number of vectors).
+            a: Scale coefficient.
+            b: Exponent coefficient.
 
         Returns:
-            float: Predicted latency value.
+            Predicted latency value.
         """
         return a * np.power(x, b)
 
