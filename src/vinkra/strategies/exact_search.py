@@ -74,11 +74,11 @@ class ExactSearch(BaseStrategy):
         self.active_vectors_arr = np.vstack(self._all_vectors)[active_indices]
         self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
 
-    def add(self, vector_records: list[VectorRecord], is_buffer: bool = False) -> list[str]:
+    def add(self, vector_records: list[dict], is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
-            vector_records (list[VectorRecord]): List of vector records.
+            vector_records (list[dict]): List of dicts with 'id', 'embedding' keys.
             is_buffer (bool): If True, records are already in SQLite. Defaults to False.
 
         Returns:
@@ -89,16 +89,16 @@ class ExactSearch(BaseStrategy):
 
             for record in vector_records:
                 idx = len(self._all_ids)
-                self._all_vectors.append(record.embedding)
-                self._all_ids.append(record.id)
-                self._id_to_idx[record.id] = idx
+                self._all_vectors.append(record["embedding"])
+                self._all_ids.append(record["id"])
+                self._id_to_idx[record["id"]] = idx
                 self._mask.append(True)
 
                 # Invalidate cache
                 self.active_vectors_arr = None
                 self.active_ids_arr = None
 
-                assigned_ids.append(self._bytes_to_uuid_str(record.id))
+                assigned_ids.append(self._bytes_to_uuid_str(record["id"]))
 
             if not is_buffer:
                 self.db.insert(vector_records)

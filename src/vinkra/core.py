@@ -270,12 +270,12 @@ class VinkraDB:
                 optimal,
                 len(vector_records) - optimal,
             )
-            subset_records = vector_records[:optimal] 
+            subset_records = vector_records[:optimal]
             remainder_records = vector_records[optimal:]
             return self.add(subset_records) + self.add(remainder_records)
 
         try:
-            records = VectorRecords(
+            validated = VectorRecords(
                 dim=self.dim,
                 metric=self._metric,
                 records=vector_records,
@@ -290,9 +290,11 @@ class VinkraDB:
             self.verbose, "Adding {} vector records to index.", len(vector_records)
         )
 
+        validated_records = [r.model_dump() for r in validated.records]
+
         if self._ann_building:
-            assigned_ids = [r.id for r in records.records]
-            self._records_db.insert(records.records, is_buffer=True)
+            assigned_ids = [r["id"] for r in validated_records]
+            self._records_db.insert(validated_records, is_buffer=True)
             log_info(
                 self.verbose,
                 "Successfully added {} records to buffer.",
@@ -300,7 +302,7 @@ class VinkraDB:
             )
             return assigned_ids
 
-        assigned_ids = self._strategy.add(records.records)
+        assigned_ids = self._strategy.add(validated_records)
 
         if self.strategy == "exact_search":
             # Check if switch should be triggered based on new count
@@ -462,12 +464,14 @@ class VinkraDB:
         """
         n_cand = n_total // 2
         while n_cand > 0:
-            if self._latency_predictor.predict(n_cand) <= self._ann_config.switch_latency_ms:
+            if (
+                self._latency_predictor.predict(n_cand)
+                <= self._ann_config.switch_latency_ms
+            ):
                 break
             n_cand //= 2
 
         return max(n_cand, 1)
-
 
     def _should_switch(self) -> bool:
         """
@@ -534,17 +538,12 @@ class VinkraDB:
         if not buffer_rows:
             return
 
-        records = [
-            VectorRecord(
-                id=row[0],
-                embedding=np.frombuffer(row[1], dtype=np.float32),
-                content="",
-                metadata={},
-            )
+        buffered = [
+            {"id": row[0], "embedding": np.frombuffer(row[1], dtype=np.float32)}
             for row in buffer_rows
         ]
 
-        strategy.add(records, is_buffer=True)
+        strategy.add(buffered, is_buffer=True)
         self._records_db.clear_buffer()
         log_info(
             self.verbose,

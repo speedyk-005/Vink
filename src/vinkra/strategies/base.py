@@ -7,7 +7,6 @@ from uuid import UUID
 import numpy as np
 
 from vinkra.filter_parser import FilterToSql
-from vinkra.models import VectorRecord
 from vinkra.sql_wrapper import SQLiteWrapper
 
 
@@ -46,11 +45,12 @@ class BaseStrategy(ABC):
         self._filter_to_sql = FilterToSql()
 
     @abstractmethod
-    def add(self, vector_records: list[VectorRecord], is_buffer: bool = False) -> list[str]:
+    def add(self, vector_records: list[dict], is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
-            vector_records (list[VectorRecord]): List of vector records.
+            vector_records (list[dict]): List of dict records with 'id', 'content',
+                'metadata', and 'embedding' keys.
             is_buffer (bool): If True, records are already in SQLite (buffer replay).
                 Subclasses should skip re-inserting to avoid duplicate key errors.
 

@@ -197,11 +197,11 @@ class ApproximateSearch(BaseStrategy):
 
         self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
 
-    def add(self, vector_records: list[VectorRecord], is_buffer: bool = False) -> list[str]:
+    def add(self, vector_records: list[dict], is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
-            vector_records (list[VectorRecord]): List of vector records.
+            vector_records (list[dict]): List of dicts with 'id', 'embedding' keys.
 
         Returns:
             list[str]: List of assigned UUIDv7 IDs.
@@ -217,12 +217,12 @@ class ApproximateSearch(BaseStrategy):
 
             for record in vector_records:
                 idx = len(self._all_ids)
-                self._all_ids.append(record.id)
-                self._id_to_idx[record.id] = idx
+                self._all_ids.append(record["id"])
+                self._id_to_idx[record["id"]] = idx
                 self._mask.append(True)
                 self.active_ids_arr = None
-                embeddings.append(record.embedding)
-                assigned_ids.append(self._bytes_to_uuid_str(record.id))
+                embeddings.append(record["embedding"])
+                assigned_ids.append(self._bytes_to_uuid_str(record["id"]))
 
         self.index.add(np.vstack(embeddings))
 

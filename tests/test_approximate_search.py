@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vinkra.models import AnnConfig, VectorRecord, VectorRecords
+from vinkra.models import AnnConfig
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.approximate_search import ApproximateSearch
 from vinkra.utils.id_generation import generate_id_bytes
@@ -43,9 +43,7 @@ def approx_search_strategy():
         {"id": id, "content": "fit content", "metadata": {}, "embedding": vec}
         for id, vec in zip(ids, train_vectors, strict=True)
     ]
-    strategy.db.insert(
-        VectorRecords(dim=128, metric="euclidean", records=records).records
-    )
+    strategy.db.insert(records)
 
     global IDS_TO_DELETE
     IDS_TO_DELETE = ids  # Store them for the deletion test case
@@ -58,11 +56,12 @@ def test_add(approx_search_strategy, sample_embeddings):
     Test adding vector records by checking if internal structures are synced and SQLite count.
     """
     records = [
-        VectorRecord(
-            content=f"content {i}",
-            metadata={"index": i},
-            embedding=sample_embeddings,
-        )
+        {
+            "id": generate_id_bytes(),
+            "content": f"content {i}",
+            "metadata": {"index": i},
+            "embedding": sample_embeddings,
+        }
         for i in range(1, 3)
     ]
     approx_search_strategy.add(records)
@@ -110,7 +109,7 @@ def test_search_without_filter(approx_search_strategy, sample_records):
     approx_search_strategy.add(sample_records)
 
     # Use the first embedding from sample_records as query
-    query_embedding = sample_records[0].embedding
+    query_embedding = sample_records[0]["embedding"]
     results = approx_search_strategy.search(
         query_embedding, top_k=4, include_vectors=True
     )
@@ -119,17 +118,17 @@ def test_search_without_filter(approx_search_strategy, sample_records):
     assert len(results) == 4, f"Expected 4 results, but got {len(results)}"
 
     for record in sample_records:
-        rec_id_str = approx_search_strategy._bytes_to_uuid_str(record.id)
+        rec_id_str = approx_search_strategy._bytes_to_uuid_str(record["id"])
 
         if rec_id_str in id_to_res:
             res_item = id_to_res[rec_id_str]
-            assert res_item["content"] == record.content, (
+            assert res_item["content"] == record["content"], (
                 f"Content mismatch for {rec_id_str}"
             )
-            assert res_item["metadata"] == record.metadata, (
+            assert res_item["metadata"] == record["metadata"], (
                 f"Metadata mismatch for {rec_id_str}"
             )
-            assert np.allclose(res_item["embedding"], record.embedding), (
+            assert np.allclose(res_item["embedding"], record["embedding"]), (
                 f"Embedding mismatch for {rec_id_str}"
             )
 
@@ -138,11 +137,11 @@ def test_search_without_filter(approx_search_strategy, sample_records):
 def test_search_with_filter(approx_search_strategy, sample_records):
     """Test that search with filter returns only matching records."""
     for i, record in enumerate(sample_records):
-        record.metadata["category"] = "tech" if i % 2 == 0 else "science"
+        record["metadata"]["category"] = "tech" if i % 2 == 0 else "science"
 
     approx_search_strategy.add(sample_records)
 
-    query_embedding = sample_records[0].embedding
+    query_embedding = sample_records[0]["embedding"]
     results = approx_search_strategy.search(
         query_embedding, top_k=2, filters=["category == 'tech'"]
     )
@@ -158,12 +157,12 @@ def test_compact(approx_search_strategy):
     # Add extra records so compact has enough vectors to rebuild the ANN index
     rng = np.random.default_rng(seed=42)
     extra_records = [
-        VectorRecord(
-            id=generate_id_bytes(),
-            content=f"extra {i}",
-            embedding=rng.standard_normal(128).astype(np.float32),
-            metadata={},
-        )
+        {
+            "id": generate_id_bytes(),
+            "content": f"extra {i}",
+            "embedding": rng.standard_normal(128).astype(np.float32),
+            "metadata": {},
+        }
         for i in range(5)
     ]
     approx_search_strategy.add(extra_records)
@@ -205,7 +204,7 @@ def test_save_load(sample_embeddings, tmp_path):
     strategy.fit(vectors, np.array(ids, dtype="S16"))
 
     records = [
-        VectorRecord(id=id, content=f"content {i}", metadata={"i": i}, embedding=vec)
+        {"id": id, "content": f"content {i}", "metadata": {"i": i}, "embedding": vec}
         for i, (id, vec) in enumerate(zip(ids, vectors, strict=True))
     ]
     strategy.db.insert(records)
