@@ -62,7 +62,6 @@ class ApproximateSearch(BaseStrategy):
             db=db,
             dir_path=dir_path,
             dim=dim,
-            is_exact=False,
             metric=metric,
             verbose=verbose,
         )

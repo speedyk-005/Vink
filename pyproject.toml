@@ -25,8 +25,6 @@ classifiers = [
 keywords = ["vector-database", "ann", "approximate-nearest-neighbor", "similarity-search", "embedding-vectors", "semantic-search", "rag", "retrieval-augmented-generation", "llm", "generative-ai", "product-quantization", "vector-search", "ai", "information-retrieval", "knowledge-base"]
 
 dependencies = [
-    "regex>=2025.9.1",
-
     # rii requires pybind11>=2.9, but newer versions (3.x) build significantly faster.
     "pybind11>=3.0,<4.0",
 

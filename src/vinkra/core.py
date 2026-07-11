@@ -6,7 +6,6 @@ from threading import Thread
 from typing import Annotated, Callable, Literal
 
 import numpy as np
-import regex as re
 from pydantic import Field, ValidationError
 from readerwriterlock import rwlock
 
@@ -14,9 +13,11 @@ from vinkra.exceptions import InvalidInputError, VectorDimensionError
 from vinkra.latency_predictor import LatencyPredictor
 from vinkra.models import AnnConfig, VectorRecord, VectorRecords
 from vinkra.sql_wrapper import SQLiteWrapper
-
-# The strategies and the latency predictor are lazy imported
 from vinkra.strategies.base import BaseStrategy
+from vinkra.strategies.exact_search import ExactSearch
+
+# ApproximateSearch and the latency predictor are lazy imported
+
 from vinkra.utils.input_validation import (
     pretty_errors,
     validate_arguments,
@@ -162,13 +163,14 @@ class VinkraDB:
 
     @property
     def strategy(self) -> str:
-        """The internal indexing strategy currently active, formatted in snake_case."""
+        """The internal indexing strategy currently active."""
         if self._strategy is None:
             return "exact_search"
-
-        strategy_name = self._strategy.__class__.__name__
-        parts = re.split(r"(?<!^)(?=\p{LU})", strategy_name)
-        return "_".join([p.lower() for p in parts])
+        return (
+            "exact_search"
+            if isinstance(self._strategy, ExactSearch)
+            else "approximate_search"
+        )
 
     def count(self, status: Literal["active", "deleted"] | None = None) -> int:
         """Count vectors in the database.
@@ -372,8 +374,6 @@ class VinkraDB:
                 "verbose": self.verbose,
             }
             if self.strategy == "exact_search":
-                from vinkra.strategies.exact_search import ExactSearch
-
                 strategy_class = ExactSearch
             else:
                 from vinkra.strategies.approximate_search import ApproximateSearch

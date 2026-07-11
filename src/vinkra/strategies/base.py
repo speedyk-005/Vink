@@ -22,7 +22,6 @@ class BaseStrategy(ABC):
         db: SQLiteWrapper,
         dir_path: Path | None,
         dim: int,
-        is_exact: bool,
         metric: Literal["euclidean", "cosine"],
         verbose: bool,
         **kwargs,
@@ -34,14 +33,12 @@ class BaseStrategy(ABC):
             db (SQLiteWrapper): SQLite wrapper for database operations.
             dir_path (Path | None): Path to store vector data. None for in-memory storage.
             dim (int): Dimension of the vectors.
-            is_exact (bool): Whether this strategy uses exact search.
             metric (Literal["euclidean", "cosine"]): Distance metric to use.
             verbose (bool): Enable verbose output.
             **kwargs: Additional keyword arguments for subclasses.
         """
         self.db = db
         self.dir_path = dir_path
-        self.is_exact = is_exact
         self.dim = dim
         self.metric = metric
         self.verbose = verbose

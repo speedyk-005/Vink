@@ -42,7 +42,6 @@ class ExactSearch(BaseStrategy):
             db=db,
             dir_path=dir_path,
             dim=dim,
-            is_exact=True,
             metric=metric,
             verbose=verbose,
         )
