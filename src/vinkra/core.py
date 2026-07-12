@@ -288,11 +288,10 @@ class VinkraDB:
 
         assigned_ids = self._strategy.add(validated_records)
 
-        if self.strategy == "exact_search":
-            # Check if switch should be triggered based on new count
-            if self._should_switch():
-                self._ann_building = True
-                Thread(target=self._prepare_approx_strategy, daemon=True).start()
+        # Check if switch should be triggered based on new count
+        if self.strategy == "exact_search" and self._should_switch():
+            self._ann_building = True
+            Thread(target=self._prepare_approx_strategy, daemon=True).start()
 
         log_info(
             self.verbose, "Successfully added {} records to index.", len(assigned_ids)

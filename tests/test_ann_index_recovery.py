@@ -1,9 +1,10 @@
-from pathlib import Path
 import pickle
+from pathlib import Path
+
 import numpy as np
 import pytest
-
 from conftest import DB_CONFIG
+
 from vinkra.exceptions import DatabaseCorruptedError
 from vinkra.models import AnnConfig
 from vinkra.sql_wrapper import SQLiteWrapper

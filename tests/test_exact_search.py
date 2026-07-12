@@ -1,9 +1,10 @@
 import time
 from pathlib import Path
+
 import numpy as np
 import pytest
-
 from conftest import DB_CONFIG
+
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.exact_search import ExactSearch
 from vinkra.utils.id_generation import generate_id_bytes

@@ -154,9 +154,7 @@ def validate_id(id_: str | bytes) -> bytes:
     try:
         # Explicit type check to prevent AttributeError in UUID constructor
         if not isinstance(id_, (str, bytes)):
-            raise InvalidIdError(
-                f"ID must be str or bytes, got {type(id_).__name__}"
-            )
+            raise InvalidIdError(f"ID must be str or bytes, got {type(id_).__name__}")
 
         if isinstance(id_, bytes):
             if len(id_) != 16:

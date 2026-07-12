@@ -4,6 +4,12 @@ from collections import deque
 import numpy as np
 from scipy.optimize import curve_fit
 
+# Minimum data points before outlier smoothing
+_MIN_SMOOTH_SAMPLES = 2
+
+# Minimum data points before curve fitting
+_MIN_FIT_SAMPLES = 3
+
 
 class LatencyPredictor:
     """A lean, structural predictor using only bounded Power Law fitting.
@@ -65,7 +71,7 @@ class LatencyPredictor:
             actual_lat: Actual measured latency in milliseconds.
         """
         # Outlier smoothing: blend with prediction to avoid over-reaction to spikes
-        if len(self.x_buffer) >= 2:
+        if len(self.x_buffer) >= _MIN_SMOOTH_SAMPLES:
             pred = self.predict(n_vecs)
             if actual_lat > pred * 2:
                 # Blend: 70% predicted, 30% actual - reduces spike impact
@@ -74,7 +80,7 @@ class LatencyPredictor:
         self.x_buffer.append(n_vecs)
         self.y_buffer.append(max(actual_lat, 1e-4))
 
-        if len(self.x_buffer) >= 3:
+        if len(self.x_buffer) >= _MIN_FIT_SAMPLES:
             # Bounds keep the 'Physics' sane despite hardware jitter
             lower_bounds = [1e-10, 0.7]
             upper_bounds = [0.1, 1.5]

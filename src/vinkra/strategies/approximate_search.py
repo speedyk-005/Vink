@@ -124,8 +124,8 @@ class ApproximateSearch(BaseStrategy):
 
         # Sample training vectors for codec training
         n_vecs = len(vectors)
-        Ks = self._ann_config.codebook_size
-        max_train_size = min(n_vecs, max(Ks * 10, 5000))
+        ks = self._ann_config.codebook_size
+        max_train_size = min(n_vecs, max(ks * 10, 5000))
         if n_vecs > max_train_size:
             rng = np.random.default_rng()
             train_indices = rng.choice(n_vecs, size=max_train_size, replace=False)

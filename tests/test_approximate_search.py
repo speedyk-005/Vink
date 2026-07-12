@@ -1,9 +1,10 @@
 import time
 from pathlib import Path
+
 import numpy as np
 import pytest
-
 from conftest import DB_CONFIG
+
 from vinkra.models import AnnConfig
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.approximate_search import ApproximateSearch

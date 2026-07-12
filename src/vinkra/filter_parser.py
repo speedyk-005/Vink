@@ -1,4 +1,3 @@
-# TODO: Use the third party regex ibstead
 import re
 
 from vinkra.exceptions import FilterError
@@ -78,10 +77,7 @@ class FilterToSql:
             sequence = res["sequence"]
 
             field = sequence[0]
-            if field == "content":
-                field = "content_fts5"
-            else:
-                field = f"metadata ->> '{field}'"
+            field = "content_fts5" if field == "content" else f"metadata ->> '{field}'"
 
             operator = (
                 "=" if sequence[1] == "==" else sequence[1]
