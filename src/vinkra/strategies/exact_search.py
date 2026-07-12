@@ -185,7 +185,9 @@ class ExactSearch(BaseStrategy):
         )
         id_to_row = {row[0]: row for row in rows}
 
-        return self._build_results(ids, scores, id_to_row, include_vectors=include_vectors)
+        return self._build_results(
+            ids, scores, id_to_row, include_vectors=include_vectors
+        )
 
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""

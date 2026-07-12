@@ -10,7 +10,7 @@ if sqlite3.sqlite_version_info < (3, 45, 0):
         import pysqlite3 as sqlite3
     except ImportError:
         raise ImportError(
-            f"Your SQLite is {sqlite3.sqlite_version} but 3.45.0+ is required for JSONB support. "
+            f"Your SQLite is {sqlite3.sqlite_version} but 3.45.0+ is required. "
             "Fix it: pip install pysqlite3"
         ) from None
 
@@ -24,7 +24,7 @@ class SQLiteWrapper:
 
         Args:
             path: Path to SQLite database file.
-            index_config: Optional dict with index metadata (dimension, metric, strategy).
+            index_config: Optional dict with index metadata (dim, metric, strategy).
                 Used to initialize db_meta table on first creation.
         """
         self._conn = sqlite3.connect(path, check_same_thread=False, timeout=10)
@@ -104,7 +104,7 @@ class SQLiteWrapper:
         """Insert vec_records into SQLite.
 
         Args:
-            vec_records: List of dicts with 'id', 'content', 'metadata', 'embedding' keys.
+            vec_records: List of dicts with id, content, metadata, embedding keys.
             is_buffer: If True, marks all vec_records as buffered.
         """
         cursor = self._conn.cursor()

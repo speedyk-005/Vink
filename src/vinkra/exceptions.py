@@ -15,7 +15,7 @@ class InvalidIdError(InvalidInputError):
 
 
 class IndexNotFittedError(Exception):
-    """Raised when an operation requiring learned quantization is called on an unitialized index."""
+    """Raised when a learned quantisation op is called on an uninitialised index."""
 
 
 class FilterError(InvalidInputError):

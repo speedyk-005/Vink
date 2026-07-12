@@ -33,7 +33,8 @@ class LatencyPredictor:
 
     def _calibrate_device(self) -> None:
         """Calibrate the device by measuring raw BLAS performance."""
-        # Scale by dim to keep work (vectors * dim) constant with empirical baseline (128-dim, 20k-vecs)
+        # Scale by dim to keep work (vectors * dim) constant with empirical baseline
+        # (128-dim, 20k-vecs)
         test_n = int((128 / self._dim) * 20000)
 
         vecs = np.random.randn(test_n, self._dim).astype(np.float32)
@@ -124,7 +125,8 @@ if __name__ == "__main__":  # pragma: no cover
         act = (time.perf_counter() - t0) * 1000
 
         print(
-            f"{i + 1:<5} | {n:<7} | {p:6.2f}ms | {act:6.2f}ms | {predictor._popt[1]:4.2f}"
+            f"{i + 1:<5} | {n:<7} | {p:6.2f}ms | "
+            f"{act:6.2f}ms | {predictor._popt[1]:4.2f}"
         )
         predictor.tune(n, act)
 

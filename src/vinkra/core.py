@@ -37,7 +37,7 @@ class VinkraDB:
     Index (RII) and Product Quantization (PQ) for efficient ANN.
 
     Note:
-        ANN switching is one-way. Once switched, the system never switches back to exact search.
+        ANN switching is one-way. Once switched, it never switches back to exact search.
 
     Features:
 
@@ -98,11 +98,11 @@ class VinkraDB:
                 If False, switches between exact and ANN based on runtime calibration.
                 Defaults to False.
             ann_config: Configuration for approximate nearest neighbor search.
-                Used during switching and compacting. Defaults to ANNConfig with standard settings.
+                Used for switching and compacting. Defaults to standard ANNConfig.
                 Only applicable when force_exact is False.
             embedding_callback: Callback function to generate embeddings
                 from content. If provided, 'embedding' key is optional in
-                vector records as it will be generated via this callback. Defaults to None.
+                vector records (generated via this callback). Defaults to None.
             overwrite: Overwrite existing index if exists. Defaults to False.
             verbose: Enable verbose output. Defaults to False.
         """
@@ -117,7 +117,7 @@ class VinkraDB:
         self._strategy: BaseStrategy | None = None
         self._latency_predictor: LatencyPredictor | None = None
 
-        # Default the ann_config with standard settings if user doesn't provide their own
+        # Default ann_config to standard settings if user didn't provide one
         if not (self._force_exact or self._ann_config):
             self._ann_config = AnnConfig()
         self._validate_config()
@@ -188,7 +188,8 @@ class VinkraDB:
         """Return database statistics and metadata.
 
         Returns:
-            Database metadata including version, dimension, metric, strategy,last_saved_at, last_deleted_at, active_count, deleted_count,
+            Database metadata including version, dimension, metric, strategy,
+            last_saved_at, last_deleted_at, active_count, deleted_count,
                 and other stored metadata.
         """
         return {
@@ -218,8 +219,8 @@ class VinkraDB:
                 )
                 if validated_vec.shape[-1] != self._dim:
                     raise VectorDimensionError(
-                        f"Embedding callback output dimension ({validated_vec.shape[-1]}) "
-                        f"does not match VinkraDB dimension ({self._dim})."
+                        f"Embedding callback dimension ({validated_vec.shape[-1]})"
+                        f" does not match VinkraDB dimension ({self._dim})."
                     )
             except (VectorDimensionError, InvalidInputError):
                 # Let these specific errors bubble up for the test/user
@@ -239,15 +240,16 @@ class VinkraDB:
                 If not provided, a UUIDv7 will be auto-generated.
 
         Note:
-            The first batch (when database is empty) is limited to 10,000 vectors to avoid
-            expensive initial index operations. This constraint only applies to the first add()
-            call. Subsequent batches can be any size.
+            The first batch (empty database) is limited to 10,000 vectors
+            to avoid expensive initial index operations. This constraint
+            only applies to the first add() call. Subsequent batches can be any size.
 
         Returns:
             List of assigned UUIDv7 IDs.
 
         Raises:
-            InvalidInputError: If validation fails or if the first batch exceeds 10,000 vectors.
+            InvalidInputError: If validation fails or if the first batch
+                exceeds 10,000 vectors.
         """
         if not vector_records:
             log_info(self.verbose, "Input is empty, returning empty list.")

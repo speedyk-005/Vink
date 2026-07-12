@@ -19,7 +19,8 @@ def pretty_errors(error: ValidationError) -> str:
         A scannable string containing error counts, locations, and input types.
     """
     lines = [
-        f"{error.error_count()} validation error for {getattr(error, 'subtitle', '') or error.title}."
+        f"{error.error_count()} validation error for "
+        f"{getattr(error, 'subtitle', '') or error.title}."
     ]
     for ind, err in enumerate(error.errors(), start=1):
         msg = err["msg"]

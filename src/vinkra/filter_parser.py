@@ -71,7 +71,8 @@ class FilterToSql:
 
             if not res["success"]:
                 raise FilterError(
-                    f"error at index {idx}, col {res['col']}, found: {res['found']}, expecting: {res['expect']}"
+                    f"error at index {idx}, col {res['col']}, found: "
+                    f"{res['found']}, expecting: {res['expect']}"
                 )
 
             sequence = res["sequence"]

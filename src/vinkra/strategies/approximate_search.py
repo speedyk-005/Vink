@@ -108,7 +108,7 @@ class ApproximateSearch(BaseStrategy):
 
         if self._ann_config.codebook_size >= len(vectors):
             raise InvalidInputError(
-                f"Codebook size ({self._ann_config.codebook_size}) must be strictly less than "
+                f"Codebook size ({self._ann_config.codebook_size}) must be less than "
                 f"the number of training vectors ({len(vectors)}). "
                 "This constraint is required by Product Quantization."
             )
@@ -318,7 +318,7 @@ class ApproximateSearch(BaseStrategy):
             if self.is_reconfig:
                 # Use linear scan during reconfiguration to avoid inconsistent results
                 # from inverted index being updated in background. Linear is still fast
-                # since it uses ADist on PQ-coded vectors (M table lookups, not full vectors).
+                # since it uses ADist on PQ-coded vectors (M lookups, not full vectors).
                 ids, scores = self._query_index(
                     query_vec, filtered_ids, top_k, method="linear"
                 )
@@ -336,7 +336,9 @@ class ApproximateSearch(BaseStrategy):
         )
         id_to_row = {row[0]: row for row in rows}
 
-        return self._build_results(ids, scores, id_to_row, include_vectors=include_vectors)
+        return self._build_results(
+            ids, scores, id_to_row, include_vectors=include_vectors
+        )
 
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
