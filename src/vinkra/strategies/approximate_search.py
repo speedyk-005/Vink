@@ -382,7 +382,7 @@ class ApproximateSearch(BaseStrategy):
         """Save the index to disk using double-write strategy for tight syncing."""
         self._validate_fitted()
 
-        with open(self._ann_shadow_index_path, "wb") as f:
+        with self._ann_shadow_index_path.open("wb") as f:
             pickle.dump(self.index, f, protocol=5)
             f.flush()  # Flush internal buffer
             os.fsync(f.fileno())  # Force OS to write to physical disk
@@ -427,7 +427,7 @@ class ApproximateSearch(BaseStrategy):
         """Safely load the ann index with recovering step in case of desyncronisation"""
 
         def load_index(path):
-            with open(path, "rb") as f:
+            with path.open("rb") as f:
                 index = pickle.load(f)
 
             if len(self._all_ids) != index.N:

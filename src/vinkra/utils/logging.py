@@ -1,7 +1,7 @@
 from loguru import logger
 
 
-def log_info(verbose: bool, *args, **kwargs) -> None:  # noqa: FBT001,FBT002  # pragma: no cover
+def log_info(verbose: bool, *args, **kwargs) -> None:  # noqa: FBT001  # pragma: no cover
     """Log an info message if verbose is enabled.
 
     This is a convenience function that only logs when verbose mode is enabled,

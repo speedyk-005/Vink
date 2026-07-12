@@ -94,7 +94,7 @@ def test_crash_before_db_commit(approx_search_strategy):
     db_path = approx_search_strategy.dir_path
     ann_index_wal_path = approx_search_strategy._ann_shadow_index_path
 
-    with open(ann_index_wal_path, "wb") as f:
+    with ann_index_wal_path.open("wb") as f:
         pickle.dump(approx_search_strategy.index, f, protocol=5)
 
     # Skip the commit
@@ -118,7 +118,7 @@ def test_power_cut_after_commit_before_swap(approx_search_strategy):
     db_path = approx_search_strategy.dir_path
     ann_index_wal_path = approx_search_strategy._ann_shadow_index_path
 
-    with open(ann_index_wal_path, "wb") as f:
+    with ann_index_wal_path.open("wb") as f:
         pickle.dump(approx_search_strategy.index, f, protocol=5)
 
     approx_search_strategy.db.commit()
