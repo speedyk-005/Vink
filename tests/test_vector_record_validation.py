@@ -6,17 +6,17 @@ from vinkra.exceptions import InvalidIdError, InvalidInputError, VectorDimension
 from vinkra.models import VectorRecord, VectorRecords
 
 
-def mock_embedding_callback(text: str) -> np.ndarray:
+def mock_embedding_callback(_text: str) -> np.ndarray:
     """A valid mock callback returning a 128-dim vector."""
     return np.random.rand(128).astype(np.float32)
 
 
-def mock_invalid_dim_callback(text: str) -> np.ndarray:
+def mock_invalid_dim_callback(_text: str) -> np.ndarray:
     """An invalid mock callback returning the wrong dimension."""
     return np.random.rand(64).astype(np.float32)
 
 
-def mock_crashing_callback(text: str) -> np.ndarray:
+def mock_crashing_callback(_text: str) -> np.ndarray:
     """A callback that simulates a model failure."""
     raise RuntimeError("Model server down")
 
@@ -48,7 +48,7 @@ def test_invalid_id(id_val, match):
         ),
         (mock_crashing_callback, InvalidInputError, "Embedding callback crashed"),
         (
-            lambda x: "not-a-vector",
+            lambda _: "not-a-vector",
             InvalidInputError,
             "Vector components must be numeric",
         ),

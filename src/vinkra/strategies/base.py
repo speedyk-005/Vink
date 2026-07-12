@@ -23,6 +23,7 @@ class BaseStrategy(ABC):
         dir_path: Path | None,
         dim: int,
         metric: Literal["euclidean", "cosine"],
+        *,
         verbose: bool,
     ) -> None:
         """
@@ -75,7 +76,7 @@ class BaseStrategy(ABC):
         ...
 
     @abstractmethod
-    def load(self, overwrite: bool) -> None:
+    def load(self, *, overwrite: bool) -> None:
         """Load the index from disk.
 
         Args:
@@ -88,6 +89,7 @@ class BaseStrategy(ABC):
         self,
         query_vec: np.ndarray,
         top_k: int = 10,
+        *,
         include_vectors: bool = False,
         filters: list[str] | None = None,
     ) -> list[dict]:
@@ -117,6 +119,7 @@ class BaseStrategy(ABC):
         ids: list[bytes],
         scores: np.ndarray,
         id_to_row: dict,
+        *,
         include_vectors: bool = False,
     ) -> list[dict]:
         """Build result dictionaries maintaining ranking order.

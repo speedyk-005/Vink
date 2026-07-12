@@ -70,6 +70,7 @@ class VinkraDB:
         dim: Annotated[int, Field(ge=16)],
         dir_path: str | Path | None = None,
         metric: Literal["euclidean", "cosine"] = "euclidean",
+        *,
         force_exact: bool = False,
         ann_config: AnnConfig | None = None,
         embedding_callback: Callable | None = None,
@@ -344,7 +345,7 @@ class VinkraDB:
         self._records_db["last_saved_at"] = datetime.now(UTC).isoformat()
         log_info(self.verbose, "Index saved successfully.")
 
-    def load(self, overwrite: bool = False) -> None:
+    def load(self, *, overwrite: bool = False) -> None:
         """Load the index from disk.
 
         Args:
@@ -386,6 +387,7 @@ class VinkraDB:
         self,
         query_vec: list[float] | np.ndarray,
         top_k: int = 10,
+        *,
         include_vectors: bool = False,
         filters: list[str] | None = None,
     ) -> list[dict]:
@@ -556,3 +558,4 @@ class VinkraDB:
             logger.error(f"Transaction failed: {exc_val}")
             return False  # Tell python to reraise it
         self.close()
+        return None

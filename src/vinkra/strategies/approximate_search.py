@@ -43,6 +43,7 @@ class ApproximateSearch(BaseStrategy):
         dir_path: Path | None,
         dim: int,
         metric: Literal["euclidean", "cosine"],
+        *,
         verbose: bool,
         ann_config: AnnConfig,
     ) -> None:
@@ -203,7 +204,7 @@ class ApproximateSearch(BaseStrategy):
 
         self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
 
-    def add(self, vector_records: list[dict], is_buffer: bool = False) -> list[str]:
+    def add(self, vector_records: list[dict], *, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
@@ -273,6 +274,7 @@ class ApproximateSearch(BaseStrategy):
         self,
         query_vec: np.ndarray,
         top_k: int = 10,
+        *,
         include_vectors: bool = False,
         filters: list[str] | None = None,
     ) -> list[dict]:
@@ -334,7 +336,7 @@ class ApproximateSearch(BaseStrategy):
         )
         id_to_row = {row[0]: row for row in rows}
 
-        return self._build_results(ids, scores, id_to_row, include_vectors)
+        return self._build_results(ids, scores, id_to_row, include_vectors=include_vectors)
 
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
@@ -389,7 +391,7 @@ class ApproximateSearch(BaseStrategy):
 
         self._swap_index()
 
-    def load(self, overwrite: bool) -> None:
+    def load(self, *, overwrite: bool) -> None:
         """Load the index from disk.
 
         Args:

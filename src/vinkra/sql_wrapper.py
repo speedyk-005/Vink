@@ -100,7 +100,7 @@ class SQLiteWrapper:
         self._conn.commit()
 
     @validate_arguments
-    def insert(self, vec_records: list[dict], is_buffer: bool = False) -> None:
+    def insert(self, vec_records: list[dict], *, is_buffer: bool = False) -> None:
         """Insert vec_records into SQLite.
 
         Args:

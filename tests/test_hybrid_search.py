@@ -9,20 +9,18 @@ DIM = 128
 
 
 @pytest.fixture
-def vinkdb(tmp_path, request, mocker):
+def vinkdb(tmp_path, request):
     """Create a VinkraDB instance for testing."""
     params = getattr(request, "param", {})
     force_exact = params.get("force_exact", False)
 
-    db = VinkraDB(
+    return VinkraDB(
         dir_path=tmp_path,
         dim=DIM,
         force_exact=force_exact,
         ann_config=AnnConfig(num_subspaces=4, codebook_size=4),
         verbose=False,
     )
-
-    return db
 
 
 @pytest.mark.flaky(reruns=5)
@@ -54,7 +52,7 @@ def test_switch_triggers(vinkdb, sample_records, mocker):
 
 
 @pytest.mark.parametrize("vinkdb", [{"force_exact": True}], indirect=True)
-def test_force_exact(vinkdb, sample_records, mocker):
+def test_force_exact(vinkdb):
     assert vinkdb.force_exact is True, "force_exact should be True"
     assert vinkdb.strategy == "exact_search", "Should stay exact when force_exact=True"
     assert vinkdb._should_switch() is False, "_should_switch should be False"

@@ -24,6 +24,7 @@ class ExactSearch(BaseStrategy):
         dir_path: Path | None,
         dim: int,
         metric: Literal["euclidean", "cosine"],
+        *,
         verbose: bool,
     ) -> None:
         """
@@ -125,6 +126,7 @@ class ExactSearch(BaseStrategy):
         self,
         query_vec: np.ndarray,
         top_k: int = 10,
+        *,
         include_vectors: bool = False,
         filters: list[str] | None = None,
     ) -> list[dict]:
@@ -183,7 +185,7 @@ class ExactSearch(BaseStrategy):
         )
         id_to_row = {row[0]: row for row in rows}
 
-        return self._build_results(ids, scores, id_to_row, include_vectors)
+        return self._build_results(ids, scores, id_to_row, include_vectors=include_vectors)
 
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
@@ -208,7 +210,7 @@ class ExactSearch(BaseStrategy):
         """Save the index to disk by committing the database."""
         self.db.commit()
 
-    def load(self, overwrite: bool) -> None:
+    def load(self, *, overwrite: bool) -> None:
         """Load the index from SQLite.
 
         Args:

@@ -182,7 +182,7 @@ def test_compact(approx_search_strategy):
     )
 
 
-def test_save_load(sample_embeddings, tmp_path):
+def test_save_load(tmp_path):
     """Test that save persists index and load restores it correctly."""
     tmp_path = Path(tmp_path)
 
