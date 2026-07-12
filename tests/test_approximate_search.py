@@ -40,13 +40,12 @@ def approx_search_strategy():
 
     # Use wrapper insert to simulate exact search data before the switch
     records = [
-        {"id": id, "content": "fit content", "metadata": {}, "embedding": vec}
-        for id, vec in zip(ids, train_vectors, strict=True)
+        {"id": id_, "content": "fit content", "metadata": {}, "embedding": vec}
+        for id_, vec in zip(ids, train_vectors, strict=True)
     ]
     strategy.db.insert(records)
 
-    global IDS_TO_DELETE
-    IDS_TO_DELETE = ids  # Store them for the deletion test case
+    IDS_TO_DELETE[:] = ids  # Store them for the deletion test case
 
     return strategy
 
@@ -204,8 +203,8 @@ def test_save_load(tmp_path):
     strategy.fit(vectors, np.array(ids, dtype="S16"))
 
     records = [
-        {"id": id, "content": f"content {i}", "metadata": {"i": i}, "embedding": vec}
-        for i, (id, vec) in enumerate(zip(ids, vectors, strict=True))
+        {"id": id_, "content": f"content {i}", "metadata": {"i": i}, "embedding": vec}
+        for i, (id_, vec) in enumerate(zip(ids, vectors, strict=True))
     ]
     strategy.db.insert(records)
     strategy.save()

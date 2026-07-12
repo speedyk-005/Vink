@@ -141,34 +141,36 @@ def validate_embedding(
     return vecs
 
 
-def validate_id(id: str | bytes) -> bytes:
+def validate_id(id_: str | bytes) -> bytes:
     """
     Validate an ID or generate a new UUIDv7. Always returns 16 bytes.
 
     Args:
-        id: UUIDv7 as string or bytes.
+        id_: UUIDv7 as string or bytes.
 
     Returns:
         16-byte binary UUIDv7.
     """
     try:
         # Explicit type check to prevent AttributeError in UUID constructor
-        if not isinstance(id, (str, bytes)):
-            raise InvalidIdError(f"ID must be str or bytes, got {type(id).__name__}")
+        if not isinstance(id_, (str, bytes)):
+            raise InvalidIdError(
+                f"ID must be str or bytes, got {type(id_).__name__}"
+            )
 
-        if isinstance(id, bytes):
-            if len(id) != 16:
+        if isinstance(id_, bytes):
+            if len(id_) != 16:
                 raise InvalidIdError(
-                    f"Invalid UUID bytes length: expected 16, got {len(id)}"
+                    f"Invalid UUID bytes length: expected 16, got {len(id_)}"
                 )
-            val = UUID(bytes=id)
+            val = UUID(bytes=id_)
         else:
-            val = UUID(id)
+            val = UUID(id_)
 
         if val.version != 7:
-            raise InvalidIdError(f"Not a UUIDv7: {id}")
+            raise InvalidIdError(f"Not a UUIDv7: {id_}")
 
         return val.bytes
 
     except (ValueError, TypeError):
-        raise InvalidIdError(f"Invalid UUIDv7 format: {id}") from None
+        raise InvalidIdError(f"Invalid UUIDv7 format: {id_}") from None

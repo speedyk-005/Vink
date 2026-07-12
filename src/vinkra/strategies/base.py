@@ -108,11 +108,11 @@ class BaseStrategy(ABC):
         """
         ...
 
-    def _bytes_to_uuid_str(self, id: str | bytes) -> str:
+    def _bytes_to_uuid_str(self, id_: str | bytes) -> str:
         """Convert UUIDv7 bytes to UUID string format."""
-        if isinstance(id, bytes):
-            return str(UUID(bytes=id))
-        return id
+        if isinstance(id_, bytes):
+            return str(UUID(bytes=id_))
+        return id_
 
     def _build_results(
         self,

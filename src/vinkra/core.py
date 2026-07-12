@@ -457,7 +457,7 @@ class VinkraDB:
             return None
 
         # Find max subset that stays under latency threshold via halving.
-        n_cand = n_total // 2
+        n_cand = len(vector_records) // 2
         while n_cand > 0:
             if (
                 self._latency_predictor.predict(n_cand)
@@ -549,7 +549,7 @@ class VinkraDB:
         log_info(
             self.verbose,
             "Buffer dump: added {} vectors to ANN index.",
-            len(records),
+            len(buffered),
         )
 
     def __enter__(self) -> "VinkraDB":
