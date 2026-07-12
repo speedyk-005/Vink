@@ -1,7 +1,7 @@
 import json
 import sqlite3
-from importlib.metadata import PackageNotFoundError, version
-from typing import Iterator, Literal
+from collections.abc import Iterator
+from typing import Literal
 
 from vinkra.utils.input_validation import validate_arguments
 

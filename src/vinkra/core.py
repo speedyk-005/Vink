@@ -1,24 +1,24 @@
 import shutil
 import time
-import numpy as np
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Thread
-from typing import Annotated, Callable, Literal
+from typing import Annotated, Literal
 
+import numpy as np
 from pydantic import Field, ValidationError
 from readerwriterlock import rwlock
 
 from vinkra import __version__
 from vinkra.exceptions import InvalidInputError, VectorDimensionError
 from vinkra.latency_predictor import LatencyPredictor
-from vinkra.models import AnnConfig, VectorRecord, VectorRecords
+from vinkra.models import AnnConfig, VectorRecords
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.base import BaseStrategy
 from vinkra.strategies.exact_search import ExactSearch
 
 # ApproximateSearch and the latency predictor are lazy imported
-
 from vinkra.utils.input_validation import (
     pretty_errors,
     validate_arguments,
@@ -310,14 +310,14 @@ class VinkraDB:
         # If ANN is building, write to buffer for replay after switch
         if self.strategy != "approximate_search" and self._ann_building:
             self._records_db.soft_delete(id_bytes)
-            self._records_db["last_deleted_at"] = datetime.now(timezone.utc).isoformat()
+            self._records_db["last_deleted_at"] = datetime.now(UTC).isoformat()
             log_info(
                 self.verbose, "Marked {} vectors for soft-deletion in buffer.", len(ids)
             )
             return
 
         self._strategy.soft_delete(id_bytes)
-        self._records_db["last_deleted_at"] = datetime.now(timezone.utc).isoformat()
+        self._records_db["last_deleted_at"] = datetime.now(UTC).isoformat()
 
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index.
@@ -341,7 +341,7 @@ class VinkraDB:
         """Save the index to disk."""
         log_info(self.verbose, "Saving index to {}.", self._dir_path)
         self._strategy.save()
-        self._records_db["last_saved_at"] = datetime.now(timezone.utc).isoformat()
+        self._records_db["last_saved_at"] = datetime.now(UTC).isoformat()
         log_info(self.verbose, "Index saved successfully.")
 
     def load(self, overwrite: bool = False) -> None:
@@ -448,7 +448,7 @@ class VinkraDB:
         if (
             self.count() > 0
             or self._latency_predictor.predict(len(vector_records))
-                <= self._ann_config.switch_latency_ms
+            <= self._ann_config.switch_latency_ms
         ):
             return None
 

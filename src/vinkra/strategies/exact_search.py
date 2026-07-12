@@ -4,7 +4,6 @@ from typing import Literal
 import numpy as np
 from readerwriterlock import rwlock
 
-from vinkra.models import VectorRecord
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.base import BaseStrategy
 from vinkra.utils.logging import log_info
@@ -179,7 +178,9 @@ class ExactSearch(BaseStrategy):
         # Query SQLite for full records of top_k IDs
         placeholders = ",".join("?" * len(ids))
         where_sql = f"WHERE id IN ({placeholders})"
-        rows = self.db.fetch(where_sql=where_sql, params=ids, include_vectors=include_vectors)
+        rows = self.db.fetch(
+            where_sql=where_sql, params=ids, include_vectors=include_vectors
+        )
         id_to_row = {row[0]: row for row in rows}
 
         return self._build_results(ids, scores, id_to_row, include_vectors)
@@ -227,7 +228,9 @@ class ExactSearch(BaseStrategy):
             rows = cursor.fetchall()
 
             self._all_ids = [row[0] for row in rows]
-            self._all_vectors = np.vstack([np.frombuffer(row[1], dtype=np.float32) for row in rows])
+            self._all_vectors = np.vstack(
+                [np.frombuffer(row[1], dtype=np.float32) for row in rows]
+            )
             self._mask = [bool(row[2]) for row in rows]
             self._id_to_idx = {
                 id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)
@@ -314,9 +317,7 @@ class ExactSearch(BaseStrategy):
             top_k - 1,
         )[:top_k]
 
-        sorted_indices = candidate_indices[
-            np.argsort(distances[candidate_indices])
-        ]
+        sorted_indices = candidate_indices[np.argsort(distances[candidate_indices])]
 
         top_ids = [id_vecs[i] for i in sorted_indices]
         top_scores = distances[sorted_indices]

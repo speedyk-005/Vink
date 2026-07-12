@@ -1,9 +1,9 @@
 import os
+import pickle
 from pathlib import Path
 from threading import Thread
 from typing import Literal
 
-import pickle
 import nanopq
 import numpy as np
 import rii
@@ -14,7 +14,7 @@ from vinkra.exceptions import (
     IndexNotFittedError,
     InvalidInputError,
 )
-from vinkra.models import AnnConfig, VectorRecord
+from vinkra.models import AnnConfig
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.base import BaseStrategy
 from vinkra.utils.logging import log_info, logger
@@ -329,7 +329,9 @@ class ApproximateSearch(BaseStrategy):
         # Query SQLite for full records of top_k IDs
         placeholders = ",".join("?" * len(ids))
         where_sql = f"WHERE id IN ({placeholders})"
-        rows = self.db.fetch(where_sql=where_sql, params=ids, include_vectors=include_vectors)
+        rows = self.db.fetch(
+            where_sql=where_sql, params=ids, include_vectors=include_vectors
+        )
         id_to_row = {row[0]: row for row in rows}
 
         return self._build_results(ids, scores, id_to_row, include_vectors)

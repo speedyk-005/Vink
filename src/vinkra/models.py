@@ -1,4 +1,5 @@
-from typing import Annotated, Any, Callable, Literal
+from collections.abc import Callable
+from typing import Annotated, Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, Field, field_validator, model_validator

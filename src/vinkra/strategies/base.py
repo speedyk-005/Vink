@@ -53,7 +53,7 @@ class BaseStrategy(ABC):
         Returns:
             List of assigned UUIDv7 IDs.
         """
-        pass
+        ...
 
     @abstractmethod
     def soft_delete(self, ids: list[str]) -> None:
@@ -62,17 +62,17 @@ class BaseStrategy(ABC):
         Args:
             ids: List of UUIDv7 IDs to soft-delete.
         """
-        pass
+        ...
 
     @abstractmethod
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
-        pass
+        ...
 
     @abstractmethod
     def save(self) -> None:
         """Save the index to disk."""
-        pass
+        ...
 
     @abstractmethod
     def load(self, overwrite: bool) -> None:
@@ -81,7 +81,7 @@ class BaseStrategy(ABC):
         Args:
             overwrite: If True, replace in-memory state with loaded data.
         """
-        pass
+        ...
 
     @abstractmethod
     def search(
@@ -104,7 +104,7 @@ class BaseStrategy(ABC):
             List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
-        pass
+        ...
 
     def _bytes_to_uuid_str(self, id: str | bytes) -> str:
         """Convert UUIDv7 bytes to UUID string format."""
