@@ -1,6 +1,6 @@
 [project]
 name = "vinkra"
-version = "0.2.0a1"
+version = "0.2.0a2"
 description = "A lightweight vector database with incremental inserts, automatic exact-to-ANN switching, and explicit storage management. Add vectors anytime without rebuilding the index"
 authors = [
     { name = "speedyk_005", email = "speedy40115719@gmail.com" }
