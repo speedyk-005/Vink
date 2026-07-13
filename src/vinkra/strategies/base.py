@@ -57,11 +57,11 @@ class BaseStrategy(ABC):
         ...
 
     @abstractmethod
-    def soft_delete(self, ids: list[str]) -> None:
+    def soft_delete(self, ids: list[str | bytes]) -> None:
         """Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids: List of UUIDv7 IDs to soft-delete.
+            ids: UUIDv7 IDs as strings or raw bytes.
         """
         ...
 
