@@ -351,9 +351,11 @@ class VinkraDB:
         """Save and close the database (idempotent)."""
         if self._closed:
             return
+
         self.save()
         self._records_db.close()
-
+        self._closed = True
+      
     def save(self) -> None:
         """Save the index to disk."""
         log_info(self.verbose, "Saving index to {}.", self._dir_path)
