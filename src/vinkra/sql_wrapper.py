@@ -57,7 +57,8 @@ class SQLiteWrapper:
         cursor.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS content_fts5 USING fts5(
                 id UNINDEXED,
-                content
+                content,
+                tokenize='trigram'
             )
          """)
 
