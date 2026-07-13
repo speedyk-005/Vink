@@ -30,6 +30,8 @@ Most vector databases force a trade-off: over-engineer for small datasets or hit
 
 **Vinkra** eliminates the guesswork. It automatically switches from **Exact Search** (for 100% precision) to **ANN** (for massive scale with IVF-PQ) based on dataset size and runtime latency. Vinkra adapts its strategy to your hardware and data, whether on a mobile device or a server.
 
+It uses a Power Law model (y = a * x^b) to predict search latency based on the number of vectors in the index. Initial calibration measures raw BLAS performance, then online tuning refines parameters with actual runtime measurements.
+
 | Feature | Description |
 | :--- | :--- |
 | ➕ **Incremental Inserts** | Add vectors anytime. Your index grows with your data, not against it. |
@@ -113,7 +115,7 @@ The demo uses:
 - `dim=128`
 - Batches of 10,000 vectors
 
-The switch happens when latency exceeds `switch_latency_ms`. A Power Law model (`y = a * x^b`) continuously tunes itself from actual search latencies to predict future performance. New vectors are buffered during the switch with zero downtime.
+The switch happens when latency exceeds `switch_latency_ms`.
 
 Example output:
 
