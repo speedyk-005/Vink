@@ -1,11 +1,11 @@
 import numpy as np
 import pytest
 
-from vinkra.models import VectorRecord
 from vinkra.utils.id_generation import generate_id_bytes
 from vinkra.utils.input_validation import validate_embedding
 
 DIM = 128
+DB_CONFIG = {"dim": DIM, "metric": "euclidean"}
 SEED = 42
 
 
@@ -50,11 +50,11 @@ def sample_records(request):
     for i in range(num):
         vec = rng.standard_normal(DIM, dtype=np.float32)
         records.append(
-            VectorRecord(
-                id=generate_id_bytes(),
-                content=f"test document {i}",
-                metadata={"index": i},
-                embedding=vec,
-            )
+            {
+                "id": generate_id_bytes(),
+                "content": f"test document {i}",
+                "metadata": {"index": i},
+                "embedding": vec,
+            }
         )
     return records

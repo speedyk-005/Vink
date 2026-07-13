@@ -23,6 +23,7 @@ BATCH_SIZE = 10_000
 MIN_REQUIRED = 32 * 256  # num_subspaces × codebook_size
 SWITCH_LATENCY_MS = 120
 
+
 def demonstrate_automatic_switch():
     """Show the automatic switch from exact to ANN search as vectors grow."""
     console.print(

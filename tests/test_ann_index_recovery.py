@@ -1,14 +1,14 @@
+import pickle
 from pathlib import Path
 
-import pickle
 import numpy as np
 import pytest
+from conftest import DB_CONFIG, DIM
 
 from vinkra.exceptions import DatabaseCorruptedError
-from vinkra.models import AnnConfig, VectorRecord, VectorRecords
+from vinkra.models import AnnConfig
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.approximate_search import ApproximateSearch
-from vinkra.utils.id_generation import generate_id_bytes
 from vinkra.utils.id_generation import generate_id_bytes
 
 DB_PATH = "records.sqlite"
@@ -19,9 +19,9 @@ def _create_bare_approx_strategy(dir_path: Path) -> ApproximateSearch:
     config = AnnConfig(num_subspaces=4, codebook_size=8)
 
     return ApproximateSearch(
-        db=SQLiteWrapper(str(dir_path / DB_PATH), index_config={}),
+        db=SQLiteWrapper(str(dir_path / DB_PATH), index_config=DB_CONFIG),
         dir_path=dir_path,
-        dim=128,
+        dim=DIM,
         metric="cosine",
         verbose=False,
         ann_config=config,
@@ -34,14 +34,14 @@ def sample_records_20():
     rng = np.random.default_rng(42)
     records = []
     for i in range(20):
-        vec = rng.standard_normal(128, dtype=np.float32)
+        vec = rng.standard_normal(DIM, dtype=np.float32)
         records.append(
-            VectorRecord(
-                id=generate_id_bytes(),
-                content=f"test document {i}",
-                metadata={"index": i},
-                embedding=vec,
-            )
+            {
+                "id": generate_id_bytes(),
+                "content": f"test document {i}",
+                "metadata": {"index": i},
+                "embedding": vec,
+            }
         )
     return records
 
@@ -53,8 +53,8 @@ def approx_search_strategy(sample_records_20, tmp_path):
 
     # N must be greater than codebook_size (8) - use first 10 for fit
     first_10 = sample_records_20[:10]
-    vectors = np.array([r.embedding for r in first_10], dtype=np.float32)
-    ids = [r.id for r in first_10]
+    vectors = np.array([r["embedding"] for r in first_10], dtype=np.float32)
+    ids = [r["id"] for r in first_10]
 
     strategy.fit(vectors, np.array(ids, dtype="S16"))
 
@@ -95,7 +95,7 @@ def test_crash_before_db_commit(approx_search_strategy):
     db_path = approx_search_strategy.dir_path
     ann_index_wal_path = approx_search_strategy._ann_shadow_index_path
 
-    with open(ann_index_wal_path, "wb") as f:
+    with ann_index_wal_path.open("wb") as f:
         pickle.dump(approx_search_strategy.index, f, protocol=5)
 
     # Skip the commit
@@ -119,7 +119,7 @@ def test_power_cut_after_commit_before_swap(approx_search_strategy):
     db_path = approx_search_strategy.dir_path
     ann_index_wal_path = approx_search_strategy._ann_shadow_index_path
 
-    with open(ann_index_wal_path, "wb") as f:
+    with ann_index_wal_path.open("wb") as f:
         pickle.dump(approx_search_strategy.index, f, protocol=5)
 
     approx_search_strategy.db.commit()

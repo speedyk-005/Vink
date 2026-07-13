@@ -25,8 +25,6 @@ classifiers = [
 keywords = ["vector-database", "ann", "approximate-nearest-neighbor", "similarity-search", "embedding-vectors", "semantic-search", "rag", "retrieval-augmented-generation", "llm", "generative-ai", "product-quantization", "vector-search", "ai", "information-retrieval", "knowledge-base"]
 
 dependencies = [
-    "regex>=2025.9.1",
-
     # rii requires pybind11>=2.9, but newer versions (3.x) build significantly faster.
     "pybind11>=3.0,<4.0",
 
@@ -47,7 +45,6 @@ dev = [
     "pytest>=8.3.5",
     "pytest-cov>=6.2.1",
     "pytest-mock>=3.14.1",
-    "pytest-rerunfailures>=15.0",
     #"ruff>=0.14.14",
     "python-docstring-markdown>=0.2.2",
 ]
@@ -71,6 +68,10 @@ packages = ["vinkra", "vinkra.utils", "vinkra.strategies"]
 minversion = "7.4"
 addopts = "--cov=vinkra --cov-report=term-missing:skip-covered --durations=10"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:One of the clusters is empty:UserWarning",
+    "ignore:unclosed database:ResourceWarning",
+]
 python_files = "test_*.py"
 
 [tool.coverage.run]
@@ -80,22 +81,54 @@ omit = [
 ]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 88
 
 [tool.ruff.lint]
-# E, W (Flake8), F (Pyflakes), I (Isort), B (Bugbear)
-select = ["E", "F", "I", "W", "B"]
-ignore = ["E501", "E203"]
+select = [
+    "A",      # Built-in shadowing and variable shadowing checks
+    "ARG",    # Unused function and method arguments
+    "B",      # Likely bugs and dangerous patterns (flake8-bugbear)
+    "BLE",    # Blind exception handling (e.g. bare except)
+    "C90",    # McCabe complexity checks
+    "E",      # pycodestyle errors (PEP 8 violations)
+    "ERA",    # Commented-out dead code detection
+    "F",      # Pyflakes logical and static analysis errors
+    "FBT",    # Boolean positional argument "traps"
+    "FIX",    # TODO, FIXME, XXX comment detection
+    "FURB",   # Refactoring and modernization suggestions (refurb)
+    "I",      # Import sorting and organization (isort)
+    "ICN",    # Import alias naming conventions
+    "INP",    # Missing __init__.py package checks
+    "N",      # PEP 8 naming conventions (pep8-naming)
+    "PERF",   # Performance anti-patterns
+    "PGH",    # Pygrep-hooks rules and miscellaneous checks
+    "PIE",    # Unnecessary or non-pythonic code patterns
+    "PL",     # Pylint-derived checks
+    "PT",     # Pytest style and correctness checks
+    "PTH",    # Prefer pathlib over os/path utilities
+    "Q",      # Quote style consistency
+    "RET",    # Return statement consistency and simplification
+    "RSE",    # Raise statement improvements
+    "RUF",    # Ruff-specific rules
+    "S",      # Security issues and insecure code patterns (bandit)
+    "SLF",    # Access to private members
+    "SIM",    # Code simplification opportunities
+    "TC",     # Type-checking block optimizations
+    "TCH",    # Move typing-only imports into TYPE_CHECKING blocks
+    "TID",    # Import restriction and tidiness rules
+    "T10",    # Debugger breakpoint detection
+    "UP",     # Python syntax and API modernization (pyupgrade)
+    "W",      # pycodestyle warnings
+]
+ignore = ["PLW2901", "COM812", "D203", "D213", "RUF001", "RUF003", "RUF012", "S311", "PLR0913", "FURB167", "PLC0206", "PLC0415"]
 
 [tool.ruff.lint.per-file-ignores]
-# Ignore unused imports in all __init__.py files
-"src/vinkra/**/__init__.py" = ["F401", "F403"]
-
-[tool.ruff.format]
-exclude = [
-    ".git",
-    ".venv",
-    "build",
-    "dist",
-]
+"__init__.py" = ["F401", "F403", "I001"]
+"src/vinkra/utils/*.py" = ["PLR2004"]
+"src/vinkra/core.py" = ["TC001", "SLF001"]
+"src/vinkra/models.py" = ["PLW0108"]
+"src/vinkra/strategies/approximate_search.py" = ["S301", "PLR2004"]
+"src/vinkra/sql_wrapper.py" = ["S608", "PLR2004"]
+"src/vinkra/latency_predictor.py" = ["SLF001"]
+"tests/*" = ["E501", "S101", "PLR2004", "Q0", "ERA001", "SLF001", "PT", "ARG002", "INP001"]

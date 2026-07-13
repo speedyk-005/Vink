@@ -4,6 +4,12 @@ from collections import deque
 import numpy as np
 from scipy.optimize import curve_fit
 
+# Minimum data points before outlier smoothing
+_MIN_SMOOTH_SAMPLES = 2
+
+# Minimum data points before curve fitting
+_MIN_FIT_SAMPLES = 3
+
 
 class LatencyPredictor:
     """A lean, structural predictor using only bounded Power Law fitting.
@@ -21,8 +27,8 @@ class LatencyPredictor:
         """Initialize latency predictor with Power Law model.
 
         Args:
-            dim (int): Vector dimensionality for calibration search.
-            window_size (int): Number of (n_vectors, latency) pairs to keep for online tuning.
+            dim: Vector dimensionality for calibration search.
+            window_size: Number of (n_vectors, latency) pairs to keep for online tuning.
         """
         self._dim = dim
         self.x_buffer = deque(maxlen=window_size)
@@ -33,7 +39,8 @@ class LatencyPredictor:
 
     def _calibrate_device(self) -> None:
         """Calibrate the device by measuring raw BLAS performance."""
-        # Scale by dim to keep work (vectors * dim) constant with empirical baseline (128-dim, 20k-vecs)
+        # Scale by dim to keep work (vectors * dim) constant with empirical baseline
+        # (128-dim, 20k-vecs)
         test_n = int((128 / self._dim) * 20000)
 
         vecs = np.random.randn(test_n, self._dim).astype(np.float32)
@@ -60,11 +67,11 @@ class LatencyPredictor:
         """Update model parameters with actual latency measurement.
 
         Args:
-            n_vecs (int): Current number of vectors in the index.
-            actual_lat (float): Actual measured latency in milliseconds.
+            n_vecs: Current number of vectors in the index.
+            actual_lat: Actual measured latency in milliseconds.
         """
         # Outlier smoothing: blend with prediction to avoid over-reaction to spikes
-        if len(self.x_buffer) >= 2:
+        if len(self.x_buffer) >= _MIN_SMOOTH_SAMPLES:
             pred = self.predict(n_vecs)
             if actual_lat > pred * 2:
                 # Blend: 70% predicted, 30% actual - reduces spike impact
@@ -73,24 +80,21 @@ class LatencyPredictor:
         self.x_buffer.append(n_vecs)
         self.y_buffer.append(max(actual_lat, 1e-4))
 
-        if len(self.x_buffer) >= 3:
-            try:
-                # Bounds keep the 'Physics' sane despite hardware jitter
-                lower_bounds = [1e-10, 0.7]
-                upper_bounds = [0.1, 1.5]
+        if len(self.x_buffer) >= _MIN_FIT_SAMPLES:
+            # Bounds keep the 'Physics' sane despite hardware jitter
+            lower_bounds = [1e-10, 0.7]
+            upper_bounds = [0.1, 1.5]
 
-                new_popt, _ = curve_fit(
-                    self._power_law,
-                    list(self.x_buffer),
-                    list(self.y_buffer),
-                    p0=self._popt,
-                    bounds=(lower_bounds, upper_bounds),
-                    method="trf",
-                    maxfev=50,
-                )
-                self._popt = new_popt
-            except Exception:
-                pass
+            new_popt, _ = curve_fit(
+                self._power_law,
+                list(self.x_buffer),
+                list(self.y_buffer),
+                p0=self._popt,
+                bounds=(lower_bounds, upper_bounds),
+                method="trf",
+                maxfev=50,
+            )
+            self._popt = new_popt
 
     def _calibration_search(self, vectors: np.ndarray, query: np.ndarray) -> None:
         """Perform dummy search for timing calibration."""
@@ -101,12 +105,12 @@ class LatencyPredictor:
         """Power Law function: y = a * x^b.
 
         Args:
-            x (float): Input value (number of vectors).
-            a (float): Scale coefficient.
-            b (float): Exponent coefficient.
+            x: Input value (number of vectors).
+            a: Scale coefficient.
+            b: Exponent coefficient.
 
         Returns:
-            float: Predicted latency value.
+            Predicted latency value.
         """
         return a * np.power(x, b)
 
@@ -127,7 +131,8 @@ if __name__ == "__main__":  # pragma: no cover
         act = (time.perf_counter() - t0) * 1000
 
         print(
-            f"{i + 1:<5} | {n:<7} | {p:6.2f}ms | {act:6.2f}ms | {predictor._popt[1]:4.2f}"
+            f"{i + 1:<5} | {n:<7} | {p:6.2f}ms | "
+            f"{act:6.2f}ms | {predictor._popt[1]:4.2f}"
         )
         predictor.tune(n, act)
 

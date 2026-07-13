@@ -13,13 +13,14 @@ def pretty_errors(error: ValidationError) -> str:
     Formats Pydantic validation errors into a clean, human-readable summary.
 
     Args:
-        error (ValidationError): The Pydantic error object to format.
+        error: The Pydantic error object to format.
 
     Returns:
-        str: A scannable string containing error counts, locations, and input types.
+        A scannable string containing error counts, locations, and input types.
     """
     lines = [
-        f"{error.error_count()} validation error for {getattr(error, 'subtitle', '') or error.title}."
+        f"{error.error_count()} validation error for "
+        f"{getattr(error, 'subtitle', '') or error.title}."
     ]
     for ind, err in enumerate(error.errors(), start=1):
         msg = err["msg"]
@@ -60,10 +61,10 @@ def validate_arguments(fn):
     Decorator that enforces type safety on function inputs and outputs.
 
     Args:
-        fn (Callable): The function to be validated.
+        fn: The function to be validated.
 
     Returns:
-        Callable: A wrapped function that re-raises Pydantic errors as InvalidInputError.
+        A wrapped function that re-raises Pydantic errors as InvalidInputError.
     """
     validated_fn = validate_call(fn, config=ConfigDict(arbitrary_types_allowed=True))
 
@@ -88,13 +89,13 @@ def validate_embedding(
     Normalization is only applied for cosine metric; euclidian skips normalization.
 
     Args:
-        vecs (list[float] | np.ndarray): Input embedding. Accepts 1D arrays of
+        vecs: Input embedding. Accepts 1D arrays of
             shape (d,) or 2D row vectors of shape (1, d).
-        dim (int): The required dimension for the embedding.
-        metric (str): Distance metric.
+        dim: The required dimension for the embedding.
+        metric: Distance metric.
 
     Returns:
-        np.ndarray: A float32 row vector of shape (1, d). Normalized for cosine,
+        A float32 row vector of shape (1, d). Normalized for cosine,
             raw for euclidean.
 
     Raises:
@@ -140,34 +141,34 @@ def validate_embedding(
     return vecs
 
 
-def validate_id(id: str | bytes) -> bytes:
+def validate_id(id_: str | bytes) -> bytes:
     """
     Validate an ID or generate a new UUIDv7. Always returns 16 bytes.
 
     Args:
-        id (str | bytes): UUIDv7 as string or bytes.
+        id_: UUIDv7 as string or bytes.
 
     Returns:
-        bytes: 16-byte binary UUIDv7.
+        16-byte binary UUIDv7.
     """
     try:
         # Explicit type check to prevent AttributeError in UUID constructor
-        if not isinstance(id, (str, bytes)):
-            raise InvalidIdError(f"ID must be str or bytes, got {type(id).__name__}")
+        if not isinstance(id_, (str, bytes)):
+            raise InvalidIdError(f"ID must be str or bytes, got {type(id_).__name__}")
 
-        if isinstance(id, bytes):
-            if len(id) != 16:
+        if isinstance(id_, bytes):
+            if len(id_) != 16:
                 raise InvalidIdError(
-                    f"Invalid UUID bytes length: expected 16, got {len(id)}"
+                    f"Invalid UUID bytes length: expected 16, got {len(id_)}"
                 )
-            val = UUID(bytes=id)
+            val = UUID(bytes=id_)
         else:
-            val = UUID(id)
+            val = UUID(id_)
 
         if val.version != 7:
-            raise InvalidIdError(f"Not a UUIDv7: {id}")
+            raise InvalidIdError(f"Not a UUIDv7: {id_}")
 
         return val.bytes
 
     except (ValueError, TypeError):
-        raise InvalidIdError(f"Invalid UUIDv7 format: {id}") from None
+        raise InvalidIdError(f"Invalid UUIDv7 format: {id_}") from None
