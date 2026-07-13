@@ -12,7 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Switch FTS5 tokenizer to trigram**: Replaced `unicode61` with `trigram` tokenizer for substring content matching.
-
 - **Code quality improvements** ([#2](https://github.com/speedyk-005/vinkra/pull/2)):
   - Removed `in_memory` parameter; persistence inferred from `dir_path` instead.
   - Moved `FilterToSql.translate` into `BaseStrategy`, deduplicated per-strategy implementations.
@@ -21,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Stripped type hints from docstrings; removed `_format_docstrings.py` and `_strip_docstring_types.py`.
   - Expanded ruff lint rules (FBT, ARG, RET, ...); fixes applied throughout.
   - Updated README with professional tone and correct usage
+
+### Fixed
+
+- **Clamp `top_k` to SQLite parameter limit**: Silently clamps to 32766 to avoid hitting the SQLite max-params limit.
 
 ## [0.1.0a2] - 2026-07-10
 

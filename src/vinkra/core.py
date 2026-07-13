@@ -27,6 +27,10 @@ from vinkra.utils.input_validation import (
 )
 from vinkra.utils.logging import log_info, logger
 
+# Modern SQLite handles up to 32766 params, which no realistic top_k will hit.
+# https://stackoverflow.com/a/19358052
+MAX_SAFE_TOP_K = 32766
+
 
 class VinkraDB:
     """
@@ -407,6 +411,8 @@ class VinkraDB:
             List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
+        top_k = min(top_k, MAX_SAFE_TOP_K)
+
         log_info(
             self.verbose,
             "Searching for {} nearest neighbors using {}.",
