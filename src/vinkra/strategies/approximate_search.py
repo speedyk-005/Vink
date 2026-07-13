@@ -1,9 +1,9 @@
 import os
+import pickle
 from pathlib import Path
 from threading import Thread
 from typing import Literal
 
-import pickle
 import nanopq
 import numpy as np
 import rii
@@ -14,8 +14,7 @@ from vinkra.exceptions import (
     IndexNotFittedError,
     InvalidInputError,
 )
-from vinkra.filter_parser import FilterToSql
-from vinkra.models import AnnConfig, VectorRecord
+from vinkra.models import AnnConfig
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.base import BaseStrategy
 from vinkra.utils.logging import log_info, logger
@@ -44,6 +43,7 @@ class ApproximateSearch(BaseStrategy):
         dir_path: Path | None,
         dim: int,
         metric: Literal["euclidean", "cosine"],
+        *,
         verbose: bool,
         ann_config: AnnConfig,
     ) -> None:
@@ -51,25 +51,23 @@ class ApproximateSearch(BaseStrategy):
         Initialize the ApproximateSearch.
 
         Args:
-            db (SQLiteWrapper): SQLite wrapper for database operations.
-            dir_path (Path | None): Path to store vector data. None for in-memory storage.
-            dim (int): Dimension of the vectors.
-            metric (Literal["euclidean", "cosine"]): Distance metric to use.
-            verbose (bool): Enable verbose output.
-            ann_config (AnnConfig): ANN configuration.
+            db: SQLite wrapper for database operations.
+            dir_path: Path to store vector data. None for in-memory storage.
+            dim: Dimension of the vectors.
+            metric: Distance metric to use.
+            verbose: Enable verbose output.
+            ann_config: ANN configuration.
         """
         super().__init__(
             db=db,
             dir_path=dir_path,
             dim=dim,
-            is_exact=False,
             metric=metric,
             verbose=verbose,
         )
         self._ann_config = ann_config
 
         self._rwlock = rwlock.RWLockFair()
-        self._filter_to_sql = FilterToSql()
         self._delta_since_reconfig = 0
         self.is_reconfig = False
         self.is_compacting = False
@@ -88,9 +86,6 @@ class ApproximateSearch(BaseStrategy):
         if self.dir_path is not None:
             self._ann_index_path = self.dir_path / "ann_index.pkl"
             self._ann_shadow_index_path = self.dir_path / "ann_index.pkl.tmp"
-        else:
-            self._ann_index_path = None
-            self._ann_shadow_index_path = None
 
     def fit(
         self,
@@ -105,15 +100,15 @@ class ApproximateSearch(BaseStrategy):
         The quantizer is trained with randomly sampled vectors.
 
         Args:
-            vectors (np.ndarray): A 2D array of shape (N, D) representing the N vectors
+            vectors: A 2D array of shape (N, D) representing the N vectors
                 of dimensionality D to be indexed.
-            active_ids_arr (np.ndarray): Array of active IDs corresponding to the vectors.
+            active_ids_arr: Array of active IDs corresponding to the vectors.
         """
         log_info(self.verbose, "Starting ANN index fit with {} vectors.", len(vectors))
 
         if self._ann_config.codebook_size >= len(vectors):
             raise InvalidInputError(
-                f"Codebook size ({self._ann_config.codebook_size}) must be strictly less than "
+                f"Codebook size ({self._ann_config.codebook_size}) must be less than "
                 f"the number of training vectors ({len(vectors)}). "
                 "This constraint is required by Product Quantization."
             )
@@ -129,8 +124,8 @@ class ApproximateSearch(BaseStrategy):
 
         # Sample training vectors for codec training
         n_vecs = len(vectors)
-        Ks = self._ann_config.codebook_size
-        max_train_size = min(n_vecs, max(Ks * 10, 5000))
+        ks = self._ann_config.codebook_size
+        max_train_size = min(n_vecs, max(ks * 10, 5000))
         if n_vecs > max_train_size:
             rng = np.random.default_rng()
             train_indices = rng.choice(n_vecs, size=max_train_size, replace=False)
@@ -176,6 +171,15 @@ class ApproximateSearch(BaseStrategy):
                 "on your training vectors before performing any index operations."
             )
 
+    def _swap_index(self) -> None:
+        """Replace shadow index with main index and fsync the directory."""
+        self._ann_shadow_index_path.replace(self._ann_index_path)
+        dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+
     def _do_reconfigure(self) -> None:
         """Run index.reconfigure() in background thread."""
         log_info(self.verbose, "ANN index reconfiguration in progress...")
@@ -200,14 +204,14 @@ class ApproximateSearch(BaseStrategy):
 
         self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
 
-    def add(self, vector_records: list[VectorRecord], is_buffer: bool = False) -> list[str]:
+    def add(self, vector_records: list[dict], *, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
 
         Args:
-            vector_records (list[VectorRecord]): List of vector records.
+            vector_records: List of dicts with 'id', 'embedding' keys.
 
         Returns:
-            list[str]: List of assigned UUIDv7 IDs.
+            List of assigned UUIDv7 IDs.
 
         Raises:
             IndexNotFittedError: If called on an index that has not been fitted yet.
@@ -220,12 +224,12 @@ class ApproximateSearch(BaseStrategy):
 
             for record in vector_records:
                 idx = len(self._all_ids)
-                self._all_ids.append(record.id)
-                self._id_to_idx[record.id] = idx
+                self._all_ids.append(record["id"])
+                self._id_to_idx[record["id"]] = idx
                 self._mask.append(True)
                 self.active_ids_arr = None
-                embeddings.append(record.embedding)
-                assigned_ids.append(self._bytes_to_uuid_str(record.id))
+                embeddings.append(record["embedding"])
+                assigned_ids.append(self._bytes_to_uuid_str(record["id"]))
 
         self.index.add(np.vstack(embeddings))
 
@@ -248,7 +252,7 @@ class ApproximateSearch(BaseStrategy):
         Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids (list[bytes]): List of UUIDv7 IDs to soft-delete.
+            ids: List of UUIDv7 IDs to soft-delete.
 
         Raises:
             IndexNotFittedError: If called on an index that has not been fitted yet.
@@ -270,20 +274,21 @@ class ApproximateSearch(BaseStrategy):
         self,
         query_vec: np.ndarray,
         top_k: int = 10,
+        *,
         include_vectors: bool = False,
         filters: list[str] | None = None,
     ) -> list[dict]:
         """Search for k nearest neighbors using the configured metric.
 
         Args:
-            query_vec (np.ndarray): The query vector as a 2D numpy array with shape (1, d).
-            top_k (int, optional): Number of nearest neighbors to return. Defaults to 10.
-            include_vectors (bool, optional): If True, include 'embedding' key in results.
+            query_vec: The query vector as a 2D numpy array with shape (1, d).
+            top_k: Number of nearest neighbors to return. Defaults to 10.
+            include_vectors: If True, include 'embedding' key in results.
                 Defaults to False.
-            filters (list[str] | None, optional): Filter expressions to apply before scoring.
+            filters: Filter expressions to apply before scoring.
 
         Returns:
-            list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
+            List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
 
         Raises:
@@ -294,9 +299,10 @@ class ApproximateSearch(BaseStrategy):
             self._ensure_cache()
 
             if filters:
-                where_clause, params = self._filter_to_sql.translate(filters)
+                where_sql, params = self._filter_to_sql.translate(filters)
+                where_sql += " AND deleted = FALSE"
                 rows = self.db.fetch(
-                    where=f"{where_clause} AND deleted = FALSE",
+                    where_sql=where_sql,
                     params=params,
                 )
                 match_set = {row[0] for row in rows}
@@ -312,7 +318,7 @@ class ApproximateSearch(BaseStrategy):
             if self.is_reconfig:
                 # Use linear scan during reconfiguration to avoid inconsistent results
                 # from inverted index being updated in background. Linear is still fast
-                # since it uses ADist on PQ-coded vectors (M table lookups, not full vectors).
+                # since it uses ADist on PQ-coded vectors (M lookups, not full vectors).
                 ids, scores = self._query_index(
                     query_vec, filtered_ids, top_k, method="linear"
                 )
@@ -324,11 +330,15 @@ class ApproximateSearch(BaseStrategy):
 
         # Query SQLite for full records of top_k IDs
         placeholders = ",".join("?" * len(ids))
-        where = f"id IN ({placeholders})"
-        rows = self.db.fetch(where=where, params=ids, include_vectors=include_vectors)
+        where_sql = f"WHERE id IN ({placeholders})"
+        rows = self.db.fetch(
+            where_sql=where_sql, params=ids, include_vectors=include_vectors
+        )
         id_to_row = {row[0]: row for row in rows}
 
-        return self._build_results(ids, scores, id_to_row, include_vectors)
+        return self._build_results(
+            ids, scores, id_to_row, include_vectors=include_vectors
+        )
 
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
@@ -374,28 +384,20 @@ class ApproximateSearch(BaseStrategy):
         """Save the index to disk using double-write strategy for tight syncing."""
         self._validate_fitted()
 
-        with open(self._ann_shadow_index_path, "wb") as f:
+        with self._ann_shadow_index_path.open("wb") as f:
             pickle.dump(self.index, f, protocol=5)
             f.flush()  # Flush internal buffer
             os.fsync(f.fileno())  # Force OS to write to physical disk
 
         self.db.commit()
 
-        self._ann_shadow_index_path.replace(self._ann_index_path)
+        self._swap_index()
 
-        # Sync the directory
-        # This ensure the 'replace' above survives a power loss
-        dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
-
-    def load(self, overwrite: bool) -> None:
+    def load(self, *, overwrite: bool) -> None:
         """Load the index from disk.
 
         Args:
-            overwrite (bool): If True, replace in-memory state with loaded data.
+            overwrite: If True, replace in-memory state with loaded data.
         """
         if not (self._ann_index_path and self._ann_index_path.exists()):
             log_info(self.verbose, "No ANN index file found, skipping index load.")
@@ -425,69 +427,69 @@ class ApproximateSearch(BaseStrategy):
 
     def _safe_load_ann_index(self):
         """Safely load the ann index with recovering step in case of desyncronisation"""
-        try:
-            with open(self._ann_index_path, "rb") as f:
+
+        def load_index(path):
+            with path.open("rb") as f:
                 index = pickle.load(f)
 
-            assert len(self._all_ids) == index.N
+            if len(self._all_ids) != index.N:
+                raise DatabaseCorruptedError(
+                    "ANN index and database records are out of sync"
+                )
 
-            self.index = index
+            return index
 
-        except (pickle.UnpicklingError, EOFError, AttributeError, AssertionError):
+        try:
+            self.index = load_index(self._ann_index_path)
+            return
+        except (
+            FileNotFoundError,
+            pickle.UnpicklingError,
+            EOFError,
+            AttributeError,
+            DatabaseCorruptedError,
+        ):
             # Recover from partial save
             log_info(
                 self.verbose, "Partial save detected... Recovering from backup file"
             )
 
-            try:
-                with open(self._ann_shadow_index_path, "rb") as f:
-                    temp_index = pickle.load(f)
+        try:
+            self.index = load_index(self._ann_shadow_index_path)
+            self._swap_index()
 
-                assert len(self._all_ids) == temp_index.N
+        except FileNotFoundError as e:
+            raise DatabaseCorruptedError(
+                "Index recovery failed - backup file not found"
+            ) from e
 
-                self.index = temp_index
-                self._ann_shadow_index_path.replace(self._ann_index_path)
-
-                # Sync the directory
-                dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
-                try:
-                    os.fsync(dir_fd)
-                finally:
-                    os.close(dir_fd)
-
-            # Rare cases
-            except FileNotFoundError as e:
-                raise DatabaseCorruptedError(
-                    "Index recovery failed - backup file not found"
-                ) from e
-
-            except (
-                pickle.UnpicklingError,
-                EOFError,
-                AttributeError,
-                AssertionError,
-            ) as e:
-                self._ann_shadow_index_path.unlink()  # Clean up the broken file
-                raise DatabaseCorruptedError(
-                    "Index recovery failed - both index and backup files are corrupted"
-                ) from e
+        except (
+            pickle.UnpicklingError,
+            EOFError,
+            AttributeError,
+            DatabaseCorruptedError,
+        ) as e:
+            self._ann_shadow_index_path.unlink(missing_ok=True)
+            raise DatabaseCorruptedError(
+                "Index recovery failed - both index and backup files are corrupted"
+            ) from e
 
     def _query_index(
         self,
         query_vec: np.ndarray,
-        ids: list[bytes],
+        id_vecs: np.ndarray,
         top_k: int,
     ) -> tuple[list[bytes], np.ndarray]:
         """
         Search for nearest neighbors to the query vector via the Rii engine.
 
         Args:
-            query_vec (np.ndarray): Query vector with shape (1, d).
-            ids (list[bytes]): Corresponding IDs for each vector.
-            top_k (int): Number of top results to return.
+            query_vec: Query vector with shape (1, d).
+            id_vecs: IDs corresponding to each vector, shape (n,).
+            top_k: Number of top results to return.
 
         Returns:
-            tuple[list[bytes], np.ndarray]: Top-k IDs and distance scores, ordered by distance
+            Top-k IDs and distance scores, ordered by distance
                 (ascending, closest first).
         """
         # Ensure query vector is 1D (rii expects 1D array)
@@ -496,7 +498,7 @@ class ApproximateSearch(BaseStrategy):
 
         # Map application IDs to internal index offsets
         target_indices = np.array(
-            [self._id_to_idx[uid] for uid in ids if uid in self._id_to_idx]
+            [self._id_to_idx[uid] for uid in id_vecs if uid in self._id_to_idx]
         )
 
         if len(target_indices) == 0:

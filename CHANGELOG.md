@@ -11,8 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Removed `in_memory` parameter** ([#1](https://github.com/speedyk-005/vinkra/pull/1)):
-  Persistence is now inferred from `dir_path` instead of a separate boolean. Pass `None` for in-memory, or a path for persistent storage.
+- **Code quality improvements** ([#2](https://github.com/speedyk-005/vinkra/pull/2)):
+  - Removed `in_memory` parameter; persistence inferred from `dir_path` instead.
+  - Moved `FilterToSql.translate` into `BaseStrategy`, deduplicated per-strategy implementations.
+  - Replaced `VectorRecord` objects with plain `list[dict]` through the strategy chain.
+  - Exposed `close()` method; suppressed noisy warnings on teardown.
+  - Stripped type hints from docstrings; removed `_format_docstrings.py` and `_strip_docstring_types.py`.
+  - Expanded ruff lint rules (FBT, ARG, RET, ...); fixes applied throughout.
+  - Updated README with professional tone and correct usage
 
 ## [0.1.0a2] - 2026-07-10
 
@@ -20,10 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **stdlib pickle**: Replaced `larch-pickle` dependency with Python's stdlib `pickle`.
 - **Relaxed `pydantic` constraint**: Lowered minimum from `2.12.2` to `2.10.0` for Android/Termux compatibility.
-
-### Added
-
-- **Termux install guide**: Installation tip for Android users building without a Rust toolchain.
 
 ---
 

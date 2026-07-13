@@ -2,23 +2,7 @@
 Vinkra: Vector Incremental Nano Kit — Reconfigurated Automatically
 
 A lightweight vector database that incrementally switches from exact to
-approximate search as your data grows — without full index rebuilds.
-
-Note:
-    ANN switching is one-way — once switched to approximate search,
-    the system will never switch back to exact search.
-
-Key differentiators:
-    - **Incremental inserts**: Add vectors anytime — no rebuild per insert.
-    - **Automatic reconfig**: No manual tuning — exact for small datasets, ANN for large.
-    - **Thread-safe**: Background ANN building doesn't block new operations.
-    - **Soft deletes + compact**: Efficient deletion with explicit storage reclamation.
-
-Features:
-    - ~100x faster using RII and Product Quantization for large datasets.
-    - Pure Python: No external services or dependencies required.
-    - Supports Euclidean (L2) and cosine (dot) product similarity.
-    - SQLite-backed persistent storage.
+approximate search as your data grows without full index rebuilds.
 
 Technical Background:
     Vinkra uses Reconfigurable Inverted Index (RII) with Product Quantization (PQ)
@@ -42,11 +26,11 @@ See Also:
 
 from importlib.metadata import PackageNotFoundError, version
 
-from vinkra.core import VinkraDB
-from vinkra.exceptions import *
-from vinkra.models import AnnConfig
-
 try:
     __version__ = version("vinkra")
 except PackageNotFoundError:
     __version__ = "0.0.0"
+
+from vinkra.core import VinkraDB
+from vinkra.exceptions import *
+from vinkra.models import AnnConfig

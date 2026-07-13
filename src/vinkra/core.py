@@ -1,22 +1,24 @@
 import shutil
 import time
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Thread
-from typing import Annotated, Callable, Literal
+from typing import Annotated, Literal
 
 import numpy as np
-import regex as re
 from pydantic import Field, ValidationError
 from readerwriterlock import rwlock
 
+from vinkra import __version__
 from vinkra.exceptions import InvalidInputError, VectorDimensionError
 from vinkra.latency_predictor import LatencyPredictor
-from vinkra.models import AnnConfig, VectorRecord, VectorRecords
+from vinkra.models import AnnConfig, VectorRecords
 from vinkra.sql_wrapper import SQLiteWrapper
-
-# The strategies and the latency predictor are lazy imported
 from vinkra.strategies.base import BaseStrategy
+from vinkra.strategies.exact_search import ExactSearch
+
+# ApproximateSearch and the latency predictor are lazy imported
 from vinkra.utils.input_validation import (
     pretty_errors,
     validate_arguments,
@@ -35,7 +37,7 @@ class VinkraDB:
     Index (RII) and Product Quantization (PQ) for efficient ANN.
 
     Note:
-        ANN switching is one-way — once switched, the system never switches back to exact search.
+        ANN switching is one-way. Once switched, it never switches back to exact search.
 
     Features:
 
@@ -68,6 +70,7 @@ class VinkraDB:
         dim: Annotated[int, Field(ge=16)],
         dir_path: str | Path | None = None,
         metric: Literal["euclidean", "cosine"] = "euclidean",
+        *,
         force_exact: bool = False,
         ann_config: AnnConfig | None = None,
         embedding_callback: Callable | None = None,
@@ -85,23 +88,23 @@ class VinkraDB:
             Everything else is read-only properties.
 
         Args:
-            dim (int): Dimension of the vectors. Must be higher than 16.
-            dir_path (str | Path | None): Directory path to store vector data. Contains the pickled index
+            dim: Dimension of the vectors. Must be higher than 16.
+            dir_path: Directory path to store vector data. Contains the pickled index
                 and SQLite database for vector records.
                 Pass None for volatile in-memory storage.
-            metric (Literal["euclidean", "cosine"], optional): Distance metric to use.
+            metric: Distance metric to use.
                 Defaults to "euclidean".
-            force_exact (bool, optional): If True, only exact calculation is used.
+            force_exact: If True, only exact calculation is used.
                 If False, switches between exact and ANN based on runtime calibration.
                 Defaults to False.
-            ann_config (AnnConfig, optional): Configuration for approximate nearest neighbor search.
-                Used during switching and compacting. Defaults to ANNConfig with standard settings.
+            ann_config: Configuration for approximate nearest neighbor search.
+                Used for switching and compacting. Defaults to standard ANNConfig.
                 Only applicable when force_exact is False.
-            embedding_callback (Callable, optional): Callback function to generate embeddings
+            embedding_callback: Callback function to generate embeddings
                 from content. If provided, 'embedding' key is optional in
-                vector records as it will be generated via this callback. Defaults to None.
-            overwrite (bool, optional): Overwrite existing index if exists. Defaults to False.
-            verbose (bool, optional): Enable verbose output. Defaults to False.
+                vector records (generated via this callback). Defaults to None.
+            overwrite: Overwrite existing index if exists. Defaults to False.
+            verbose: Enable verbose output. Defaults to False.
         """
         self._dir_path = Path(dir_path) if dir_path else None
         self._dim = dim
@@ -112,12 +115,11 @@ class VinkraDB:
         self.verbose = verbose
 
         self._strategy: BaseStrategy | None = None
-        self._latency_predictor: "LatencyPredictor" | None = None
+        self._latency_predictor: LatencyPredictor | None = None
 
-        # Default the config with standard settings if force_exact is not true
+        # Default ann_config to standard settings if user didn't provide one
         if not (self._force_exact or self._ann_config):
             self._ann_config = AnnConfig()
-
         self._validate_config()
 
         if self._dir_path is not None:
@@ -132,7 +134,7 @@ class VinkraDB:
         self._records_db = SQLiteWrapper(
             self._records_db_path,
             index_config={
-                "dimension": str(self.dim),
+                "dim": str(self.dim),
                 "metric": self.metric,
                 "strategy": "exact",
             },
@@ -162,23 +164,23 @@ class VinkraDB:
 
     @property
     def strategy(self) -> str:
-        """The internal indexing strategy currently active, formatted in snake_case."""
+        """The internal indexing strategy currently active."""
         if self._strategy is None:
             return "exact_search"
-
-        strategy_name = self._strategy.__class__.__name__
-        parts = re.split(r"(?<!^)(?=\p{LU})", strategy_name)
-        return "_".join([p.lower() for p in parts])
+        return (
+            "exact_search"
+            if isinstance(self._strategy, ExactSearch)
+            else "approximate_search"
+        )
 
     def count(self, status: Literal["active", "deleted"] | None = None) -> int:
         """Count vectors in the database.
 
         Args:
-            status (Literal["active", "deleted"], optional): Which vectors to count.
-                Count all if not provided.
+            status: Which vectors to count. Count all if not provided.
 
         Returns:
-            int: Count of vectors.
+            Count of vectors.
         """
         return self._records_db.count(status)
 
@@ -186,13 +188,13 @@ class VinkraDB:
         """Return database statistics and metadata.
 
         Returns:
-            dict: Database metadata including version, dimension, metric, strategy,
-                last_saved_at, last_deleted_at, active_count, deleted_count,
+            Database metadata including version, dimension, metric, strategy,
+            last_saved_at, last_deleted_at, active_count, deleted_count,
                 and other stored metadata.
         """
         return {
-            "version": self._records_db["version"],
-            "dimension": self._records_db["dimension"],
+            "version": __version__,
+            "dim": self._records_db["dim"],
             "metric": self._records_db["metric"],
             "strategy": self._records_db["strategy"],
             "last_saved_at": self._records_db["last_saved_at"],
@@ -205,20 +207,20 @@ class VinkraDB:
         """
         Internal handshake to verify embedding dimensions and PQ constraints.
         """
+        if not self._force_exact:
+            self._ann_config.validate_vector_dim(self._dim)
+
         # Callback Handshake validation
         if self.embedding_callback:
             try:
                 raw_vec = self.embedding_callback("vinkra_warmup_test")
-
-                # This handles casting, shape normalization (1, d), and L2 projection
                 validated_vec = validate_embedding(
                     raw_vec, dim=self.dim, metric=self.metric
                 )
-
                 if validated_vec.shape[-1] != self._dim:
                     raise VectorDimensionError(
-                        f"Embedding callback output dimension ({validated_vec.shape[-1]}) "
-                        f"does not match VinkraDB dimension ({self._dim})."
+                        f"Embedding callback dimension ({validated_vec.shape[-1]})"
+                        f" does not match VinkraDB dimension ({self._dim})."
                     )
             except (VectorDimensionError, InvalidInputError):
                 # Let these specific errors bubble up for the test/user
@@ -228,52 +230,36 @@ class VinkraDB:
                     "Embedding callback crashed during handshake"
                 ) from e
 
-        if not self._force_exact:
-            self._ann_config.validate_vector_dim(self._dim)
-
     @validate_arguments
     def add(self, vector_records: list[dict]) -> list[str]:
         """Add vectors to the index.
 
         Args:
-            vector_records (list[dict]): List of dicts with 'content', 'metadata',
+            vector_records: List of dicts with 'content', 'metadata',
                 and 'embedding' keys. 'id' is optional
                 If not provided, a UUIDv7 will be auto-generated.
 
         Note:
-            The first batch (when database is empty) is limited to 10,000 vectors to avoid
-            expensive initial index operations. This constraint only applies to the first add()
-            call. Subsequent batches can be any size.
+            The first batch (empty database) is limited to 10,000 vectors
+            to avoid expensive initial index operations. This constraint
+            only applies to the first add() call. Subsequent batches can be any size.
 
         Returns:
-            list[str]: List of assigned UUIDv7 IDs.
+            List of assigned UUIDv7 IDs.
 
         Raises:
-            InvalidInputError: If validation fails or if the first batch exceeds 10,000 vectors.
+            InvalidInputError: If validation fails or if the first batch
+                exceeds 10,000 vectors.
         """
         if not vector_records:
             log_info(self.verbose, "Input is empty, returning empty list.")
             return []
 
-        if (
-            self.count() == 0
-            and self._latency_predictor.predict(len(vector_records))
-            > self._ann_config.switch_latency_ms
-        ):
-            optimal = self._find_optimal_subset_size(len(vector_records))
-            log_info(
-                self.verbose,
-                "First batch exceeds threshold: splitting {} into {} + {}",
-                len(vector_records),
-                optimal,
-                len(vector_records) - optimal,
-            )
-            subset_records = vector_records[:optimal] 
-            remainder_records = vector_records[optimal:]
-            return self.add(subset_records) + self.add(remainder_records)
+        if split := self._maybe_split_first_batch(vector_records):
+            return split
 
         try:
-            records = VectorRecords(
+            validated = VectorRecords(
                 dim=self.dim,
                 metric=self._metric,
                 records=vector_records,
@@ -288,9 +274,11 @@ class VinkraDB:
             self.verbose, "Adding {} vector records to index.", len(vector_records)
         )
 
+        validated_records = [r.model_dump() for r in validated.records]
+
         if self._ann_building:
-            assigned_ids = [r.id for r in records.records]
-            self._records_db.insert(records.records, is_buffer=True)
+            assigned_ids = [r["id"] for r in validated_records]
+            self._records_db.insert(validated_records, is_buffer=True)
             log_info(
                 self.verbose,
                 "Successfully added {} records to buffer.",
@@ -298,13 +286,12 @@ class VinkraDB:
             )
             return assigned_ids
 
-        assigned_ids = self._strategy.add(records.records)
+        assigned_ids = self._strategy.add(validated_records)
 
-        if self.strategy == "exact_search":
-            # Check if switch should be triggered based on new count
-            if self._should_switch():
-                self._ann_building = True
-                Thread(target=self._prepare_approx_strategy, daemon=True).start()
+        # Check if switch should be triggered based on new count
+        if self.strategy == "exact_search" and self._should_switch():
+            self._ann_building = True
+            Thread(target=self._prepare_approx_strategy, daemon=True).start()
 
         log_info(
             self.verbose, "Successfully added {} records to index.", len(assigned_ids)
@@ -316,7 +303,7 @@ class VinkraDB:
         """Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids (list[str]): List of UUIDv7 IDs to soft-delete.
+            ids: List of UUIDv7 IDs to soft-delete.
         """
         log_info(self.verbose, "Soft-deleting {} vectors from index.", len(ids))
 
@@ -325,14 +312,14 @@ class VinkraDB:
         # If ANN is building, write to buffer for replay after switch
         if self.strategy != "approximate_search" and self._ann_building:
             self._records_db.soft_delete(id_bytes)
-            self._records_db["last_deleted_at"] = datetime.now(timezone.utc).isoformat()
+            self._records_db["last_deleted_at"] = datetime.now(UTC).isoformat()
             log_info(
                 self.verbose, "Marked {} vectors for soft-deletion in buffer.", len(ids)
             )
             return
 
         self._strategy.soft_delete(id_bytes)
-        self._records_db["last_deleted_at"] = datetime.now(timezone.utc).isoformat()
+        self._records_db["last_deleted_at"] = datetime.now(UTC).isoformat()
 
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index.
@@ -347,18 +334,23 @@ class VinkraDB:
         self._strategy.compact()
         log_info(self.verbose, "Compaction complete.")
 
+    def close(self) -> None:
+        """Save and close the database."""
+        self.save()
+        self._records_db.close()
+
     def save(self) -> None:
         """Save the index to disk."""
         log_info(self.verbose, "Saving index to {}.", self._dir_path)
         self._strategy.save()
-        self._records_db["last_saved_at"] = datetime.now(timezone.utc).isoformat()
+        self._records_db["last_saved_at"] = datetime.now(UTC).isoformat()
         log_info(self.verbose, "Index saved successfully.")
 
-    def load(self, overwrite: bool = False) -> None:
+    def load(self, *, overwrite: bool = False) -> None:
         """Load the index from disk.
 
         Args:
-            overwrite (bool): If True, replace in-memory state with loaded data.
+            overwrite: If True, replace in-memory state with loaded data.
                 Defaults to False.
         """
         log_info(self.verbose, "Loading index from {}.", self._dir_path)
@@ -372,8 +364,6 @@ class VinkraDB:
                 "verbose": self.verbose,
             }
             if self.strategy == "exact_search":
-                from vinkra.strategies.exact_search import ExactSearch
-
                 strategy_class = ExactSearch
             else:
                 from vinkra.strategies.approximate_search import ApproximateSearch
@@ -398,22 +388,23 @@ class VinkraDB:
         self,
         query_vec: list[float] | np.ndarray,
         top_k: int = 10,
+        *,
         include_vectors: bool = False,
         filters: list[str] | None = None,
     ) -> list[dict]:
         """Search for k nearest neighbors using the configured metric.
 
         Args:
-            query_vec (list[float] | np.ndarray): The query vector as a list of floats,
+            query_vec: The query vector as a list of floats,
                 1D numpy array (d,), or 2D numpy array (1, d).
-            top_k (int, optional): Number of nearest neighbors to return. Defaults to 10.
-            include_vectors (bool, optional): If True, include 'embedding' key in results.
+            top_k: Number of nearest neighbors to return. Defaults to 10.
+            include_vectors: If True, include 'embedding' key in results.
                 Defaults to False.
-            filters (list[str] | None, optional): Filter expressions to apply before scoring.
+            filters: Filter expressions to apply before scoring.
                 E.g., ["category == 'science'", "price >= 10"].
 
         Returns:
-            list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
+            List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
         log_info(
@@ -451,23 +442,38 @@ class VinkraDB:
         )
         return results
 
-    def _find_optimal_subset_size(self, n_total: int) -> int:
-        """Find max subset that stays under latency threshold via halving.
+    def _maybe_split_first_batch(self, vector_records: list[dict]) -> list[str] | None:
+        """Split the first batch if it would exceed the latency threshold.
 
-        Args:
-            n_total: Total vectors to add.
-
-        Returns:
-            Optimal subset size that stays under threshold.
+        Returns the concatenated result of adding each part separately
+            or None if the batch is small enough or the DB is not empty.
         """
-        n_cand = n_total // 2
+        if (
+            self.count() > 0
+            or self._latency_predictor.predict(len(vector_records))
+            <= self._ann_config.switch_latency_ms
+        ):
+            return None
+
+        # Find max subset that stays under latency threshold via halving.
+        n_cand = len(vector_records) // 2
         while n_cand > 0:
-            if self._latency_predictor.predict(n_cand) <= self._ann_config.switch_latency_ms:
+            if (
+                self._latency_predictor.predict(n_cand)
+                <= self._ann_config.switch_latency_ms
+            ):
                 break
             n_cand //= 2
+        optimal = max(n_cand, 1)
 
-        return max(n_cand, 1)
-
+        log_info(
+            self.verbose,
+            "First batch exceeds threshold: splitting {} into {} + {}",
+            len(vector_records),
+            optimal,
+            len(vector_records) - optimal,
+        )
+        return self.add(vector_records[:optimal]) + self.add(vector_records[optimal:])
 
     def _should_switch(self) -> bool:
         """
@@ -486,7 +492,6 @@ class VinkraDB:
         if n_vecs < min_required:
             return False
 
-        # Use predictor for proactive switching
         predicted_latency = self._latency_predictor.predict(n_vecs)
         return predicted_latency >= cfg.switch_latency_ms
 
@@ -497,9 +502,10 @@ class VinkraDB:
         Runs in a daemon thread so add()/search() remain unblocked.
         Replays buffered records after the strategy switch completes.
         """
-        self._strategy._ensure_cache()
-        vectors = self._strategy.active_vectors_arr
-        ids = self._strategy.active_ids_arr
+        with self._strategy._rwlock.gen_rlock():
+            self._strategy._ensure_cache()
+            vectors = self._strategy.active_vectors_arr
+            ids = self._strategy.active_ids_arr
 
         from vinkra.strategies.approximate_search import ApproximateSearch
 
@@ -514,8 +520,6 @@ class VinkraDB:
         approx_strategy.fit(vectors, ids)
 
         log_info(self.verbose, "ANN index fit complete, switching strategy.")
-
-        # Automatically switch after successful build
         self._switch_to_approx_strategy(approx_strategy)
 
     def _switch_to_approx_strategy(self, strategy) -> None:
@@ -534,22 +538,17 @@ class VinkraDB:
         if not buffer_rows:
             return
 
-        records = [
-            VectorRecord(
-                id=row[0],
-                embedding=np.frombuffer(row[1], dtype=np.float32),
-                content="",
-                metadata={},
-            )
+        buffered = [
+            {"id": row[0], "embedding": np.frombuffer(row[1], dtype=np.float32)}
             for row in buffer_rows
         ]
 
-        strategy.add(records, is_buffer=True)
+        strategy.add(buffered, is_buffer=True)
         self._records_db.clear_buffer()
         log_info(
             self.verbose,
             "Buffer dump: added {} vectors to ANN index.",
-            len(records),
+            len(buffered),
         )
 
     def __enter__(self) -> "VinkraDB":
@@ -559,4 +558,5 @@ class VinkraDB:
         if exc_type:
             logger.error(f"Transaction failed: {exc_val}")
             return False  # Tell python to reraise it
-        self.save()
+        self.close()
+        return None

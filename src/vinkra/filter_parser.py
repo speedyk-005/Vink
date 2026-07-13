@@ -1,4 +1,3 @@
-# TODO: Use the third party regex ibstead
 import re
 
 from vinkra.exceptions import FilterError
@@ -56,12 +55,12 @@ class FilterToSql:
         Convert a list of filter strings into a safe SQLite query.
 
         Args:
-            filters (list[str]): List of filter strings.
+            filters: List of filter strings.
 
         Returns:
-            tuple[str, list]: A tuple containing:
-                - query (str): The generated SQLite condition clause.
-                - params (list): List of parameters to safely bind to the query.
+            A tuple containing:
+                - query: The generated SQLite condition clause.
+                - params: List of parameters to safely bind to the query.
         """
         all_conditions = []
         query_params = []
@@ -71,16 +70,14 @@ class FilterToSql:
 
             if not res["success"]:
                 raise FilterError(
-                    f"error at index {idx}, col {res['col']}, found: {res['found']}, expecting: {res['expect']}"
+                    f"error at index {idx}, col {res['col']}, found: "
+                    f"{res['found']}, expecting: {res['expect']}"
                 )
 
             sequence = res["sequence"]
 
             field = sequence[0]
-            if field == "content":
-                field = "content_fts5"
-            else:
-                field = f"metadata ->> '{field}'"
+            field = "content_fts5" if field == "content" else f"metadata ->> '{field}'"
 
             operator = (
                 "=" if sequence[1] == "==" else sequence[1]
@@ -98,15 +95,15 @@ class FilterToSql:
             return "", []
 
         nl = "\n"
-        final_expr = f"{nl.join(f'({cond})' for cond in all_conditions)}"
+        final_expr = f"WHERE {nl.join(f'({cond})' for cond in all_conditions)}"
         return final_expr, query_params
 
     def _parse_expression(self, line: str) -> dict:
         """Parse a single filter expression into a sequence of tokens.
         Args:
-            line (str): Filter expression string.
+            line: Filter expression string.
         Returns:
-            dict: Success dict with 'sequence' key, or error dict with 'expect' key.
+            Success dict with 'sequence' key, or error dict with 'expect' key.
         """
         curr_col = 0
         curr_substring = line

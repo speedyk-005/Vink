@@ -1,4 +1,5 @@
-from typing import Annotated, Any, Callable, Literal
+from collections.abc import Callable
+from typing import Annotated, Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -14,23 +15,23 @@ class AnnConfig(BaseModel):
 
     num_subspaces: Annotated[int, Field(ge=1)] = Field(
         32,
-        description="The number of sub-vectors to split each embedding into. Must be a divisor of the embedding dimension.",
+        description="Number of sub-vectors per embedding. Must divide the dim.",
     )
     quantizer: Literal["pq", "opq"] = Field(
         "pq",
-        description="The quantization algorithm. OPQ is more accurate but slower than PQ.",
+        description="Quantization algorithm. OPQ is more accurate but slower than PQ.",
     )
     codebook_size: Annotated[int, Field(ge=2)] = Field(
         256,
-        description="Number of centroids per subspace. Affects memory usage and search accuracy.",
+        description="Centroids per subspace. Affects memory usage and search accuracy.",
     )
     switch_latency_ms: float = Field(
         300,
-        description="Switch to ANN when exact search predicted latency exceeds this threshold in milliseconds.",
+        description="Switch to ANN when predicted exact search latency exceeds limit.",
     )
     reconfig_threshold: Annotated[int, Field(ge=5000)] = Field(
         100_000,
-        description="Number of inserts before reconfiguring the index to maintain search performance.",
+        description="Inserts before reconfiguring the index on search performance.",
     )
 
     def validate_vector_dim(self, dim: int) -> None:
@@ -43,7 +44,8 @@ class AnnConfig(BaseModel):
         if dim % self.num_subspaces != 0:
             remainder = dim / self.num_subspaces
             raise VectorDimensionError(
-                f"Dimension ({dim}) must be divisible by num_subspaces ({self.num_subspaces}). "
+                f"Dimension ({dim}) must be divisible by "
+                f"num_subspaces ({self.num_subspaces}). "
                 f"Result: {remainder:.2f}"
             )
 
@@ -96,26 +98,21 @@ class VectorRecords(BaseModel):
     records: list[VectorRecord] = Field(fail_fast=True)
     embedding_callback: Callable[[str], np.ndarray] | None = Field(
         default=None,
-        description="Optional function to generate vectors for records missing 'embedding' values.",
+        description="Optional function to generate vectors for records missing one.",
     )
 
     @model_validator(mode="after")
     def validate_dimensions(self) -> "VectorRecords":
-        """Ensure all embeddings match the specified dimension and normalize if needed."""
+        """Ensure all embeddings existed and validated."""
         for i, record in enumerate(self.records):
-            if record.embedding is None and self.embedding_callback is not None:
-                record.embedding = validate_embedding(
-                    self.embedding_callback(record.content),
-                    dim=self.dim,
-                    metric=self.metric,
-                )
+            if record.embedding is None:
+                if self.embedding_callback is None:
+                    raise InvalidInputError(
+                        f"Record[{i}] is missing an embedding and no callback is set."
+                    )
+                record.embedding = self.embedding_callback(record.content)
 
-            if record.embedding is not None:
-                record.embedding = validate_embedding(
-                    record.embedding, dim=self.dim, metric=self.metric
-                )
-            else:
-                raise InvalidInputError(
-                    f"Record[{i}] is missing an embedding and no default callback is set."
-                )
+            record.embedding = validate_embedding(
+                record.embedding, dim=self.dim, metric=self.metric
+            )
         return self

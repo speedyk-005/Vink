@@ -6,7 +6,7 @@ from uuid import UUID
 
 import numpy as np
 
-from vinkra.models import VectorRecord
+from vinkra.filter_parser import FilterToSql
 from vinkra.sql_wrapper import SQLiteWrapper
 
 
@@ -22,123 +22,116 @@ class BaseStrategy(ABC):
         db: SQLiteWrapper,
         dir_path: Path | None,
         dim: int,
-        is_exact: bool,
         metric: Literal["euclidean", "cosine"],
+        *,
         verbose: bool,
-        **kwargs,
     ) -> None:
         """
         Initialize the strategy.
 
         Args:
-            db (SQLiteWrapper): SQLite wrapper for database operations.
-            dir_path (Path | None): Path to store vector data. None for in-memory storage.
-            dim (int): Dimension of the vectors.
-            is_exact (bool): Whether this strategy uses exact search.
-            metric (Literal["euclidean", "cosine"]): Distance metric to use.
-            verbose (bool): Enable verbose output.
-            **kwargs: Additional keyword arguments for subclasses.
+            db: SQLite wrapper for database operations.
+            dir_path: Path to store vector data. None for in-memory storage.
+            dim: Dimension of the vectors.
+            metric: Distance metric to use.
+            verbose: Enable verbose output.
         """
         self.db = db
         self.dir_path = dir_path
-        self.is_exact = is_exact
         self.dim = dim
         self.metric = metric
         self.verbose = verbose
+        self._filter_to_sql = FilterToSql()
 
     @abstractmethod
-    def add(self, vector_records: list[VectorRecord], is_buffer: bool = False) -> list[str]:
+    def add(self, vector_records: list[dict]) -> list[str]:
         """Add vectors to the index.
 
         Args:
-            vector_records (list[VectorRecord]): List of vector records.
-            is_buffer (bool): If True, records are already in SQLite (buffer replay).
-                Subclasses should skip re-inserting to avoid duplicate key errors.
+            vector_records: List of dict records with 'id', 'content',
+                'metadata', and 'embedding' keys.
 
         Returns:
-            list[str]: List of assigned UUIDv7 IDs.
+            List of assigned UUIDv7 IDs.
         """
-        pass
+        ...
 
     @abstractmethod
     def soft_delete(self, ids: list[str]) -> None:
         """Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids (list[bytes]): List of UUIDv7 IDs to soft-delete.
+            ids: List of UUIDv7 IDs to soft-delete.
         """
-        pass
+        ...
 
     @abstractmethod
     def compact(self) -> None:
         """Hard-delete soft-deleted records and rebuild the index."""
-        pass
+        ...
 
     @abstractmethod
     def save(self) -> None:
         """Save the index to disk."""
-        pass
+        ...
 
     @abstractmethod
-    def load(self, overwrite: bool) -> None:
+    def load(self, *, overwrite: bool) -> None:
         """Load the index from disk.
 
         Args:
-            overwrite (bool): If True, replace in-memory state with loaded data.
+            overwrite: If True, replace in-memory state with loaded data.
         """
-        pass
+        ...
 
     @abstractmethod
     def search(
         self,
         query_vec: np.ndarray,
         top_k: int = 10,
+        *,
         include_vectors: bool = False,
         filters: list[str] | None = None,
     ) -> list[dict]:
         """Search for k nearest neighbors using the configured metric.
 
         Args:
-            query_vec (np.ndarray): The query vector as a 2D numpy array with shape (1, d).
-            top_k (int, optional): Number of nearest neighbors to return. Defaults to 10.
-            include_vectors (bool, optional): If True, include 'embedding' key in results.
+            query_vec: The query vector as a 2D numpy array with shape (1, d).
+            top_k: Number of nearest neighbors to return. Defaults to 10.
+            include_vectors: If True, include 'embedding' key in results.
                 Defaults to False.
-            filters (list[str] | None, optional): Filter expressions to apply before scoring.
+            filters: Filter expressions to apply before scoring.
 
         Returns:
-            list[dict]: List of dicts with 'id', 'content', 'metadata', 'distance',
+            List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
-        pass
+        ...
 
-    def _bytes_to_uuid_str(self, id_bytes: bytes) -> str:
-        """Convert UUIDv7 bytes to UUID string format.
-
-        Args:
-            id_bytes (bytes): 16-byte UUIDv7.
-
-        Returns:
-            str: UUID string in standard format.
-        """
-        return str(UUID(bytes=id_bytes))
+    def _bytes_to_uuid_str(self, id_: str | bytes) -> str:
+        """Convert UUIDv7 bytes to UUID string format."""
+        if isinstance(id_, bytes):
+            return str(UUID(bytes=id_))
+        return id_
 
     def _build_results(
         self,
         ids: list[bytes],
         scores: np.ndarray,
         id_to_row: dict,
+        *,
         include_vectors: bool = False,
     ) -> list[dict]:
         """Build result dictionaries maintaining ranking order.
 
         Args:
-            ids (list[bytes]): Ranked list of record IDs.
-            scores (np.ndarray): Corresponding distance/similarity scores.
-            id_to_row (dict): Mapping of ID bytes to SQLite row data.
-            include_vectors (bool): Whether to include embedding in results.
+            ids: Ranked list of record IDs.
+            scores: Corresponding distance/similarity scores.
+            id_to_row: Mapping of ID bytes to SQLite row data.
+            include_vectors: Whether to include embedding in results.
 
         Returns:
-            list[dict]: List of result dicts with id, content, metadata, distance,
+            List of result dicts with id, content, metadata, distance,
                 and optionally embedding.
         """
         results = []
