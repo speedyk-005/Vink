@@ -267,6 +267,8 @@ class ExactSearch(BaseStrategy):
         if len(id_vecs) == 0:
             return np.array([]), np.array([])
 
+        k = min(top_k, len(id_vecs))
+
         # Query and stored vectors are already L2-normalized, so cosine
         # similarity is equivalent to a dot product.
         similarities = (vectors @ query_vec.T).flatten()
@@ -274,10 +276,7 @@ class ExactSearch(BaseStrategy):
         # Avoid sorting every similarity score. Partition only finds the
         # top-k candidates. The candidates are sorted afterward to preserve
         # descending similarity order.
-        candidate_indices = np.argpartition(
-            similarities,
-            -top_k,
-        )[-top_k:]
+        candidate_indices = np.argpartition(similarities, -k)[-k:]
 
         sorted_indices = candidate_indices[
             np.argsort(similarities[candidate_indices])[::-1]
@@ -311,15 +310,14 @@ class ExactSearch(BaseStrategy):
         if len(id_vecs) == 0:
             return np.array([]), np.array([])
 
+        k = min(top_k, len(id_vecs))
+
         distances = np.sqrt(np.sum((vectors - query_vec) ** 2, axis=1))
 
         # Partition finds the nearest top-k candidates without fully sorting
         # all distances. Only the selected candidates are sorted to guarantee
         # ascending distance order.
-        candidate_indices = np.argpartition(
-            distances,
-            top_k - 1,
-        )[:top_k]
+        candidate_indices = np.argpartition(distances, k - 1)[:k]
 
         sorted_indices = candidate_indices[np.argsort(distances[candidate_indices])]
 
