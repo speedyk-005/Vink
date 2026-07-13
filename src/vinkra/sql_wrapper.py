@@ -29,6 +29,7 @@ class SQLiteWrapper:
         """
         self._conn = sqlite3.connect(path, check_same_thread=False, timeout=10)
         self._conn.execute("PRAGMA journal_mode=WAL;")
+        self._conn.execute("PRAGMA mmap_size=268435456;")  # 256 MB
         self._ensure_tables_exist()
         self._validate_config(index_config)
 
