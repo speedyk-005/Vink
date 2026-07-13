@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Switch FTS5 tokenizer to trigram**: Replaced `unicode61` with `trigram` tokenizer for substring content matching.
+- **`count()` defaults to active vectors**: Added `"all"` literal for explicit total count.
+- **`is_ann_building` property**: Public read-only access to ANN build status.
 - **Code quality improvements** ([#2](https://github.com/speedyk-005/vinkra/pull/2)):
   - Removed `in_memory` parameter; persistence inferred from `dir_path` instead.
   - Moved `FilterToSql.translate` into `BaseStrategy`, deduplicated per-strategy implementations.

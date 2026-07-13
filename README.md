@@ -289,35 +289,26 @@ db.compact()
 > [!WARNING]
 > Running compaction on active `approximate_search` nodes can freeze workflows for 20-200+ seconds to calculate codebook states. Offload this into scheduled system maintenance hours.
 
-### Strategy
+### Stats ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-stats))
 
 ```python
 # Check which search strategy is currently active
 db.strategy  # "exact_search" or "approximate_search"
-```
 
-### Count ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-count))
+# Whether the ANN index is currently being built in the background."""
+db.is_ann_building
 
-```python
-# Default: count active (non-deleted) vectors
-active = db.count()   # same as db.count("active")
+# Count vectors
+# Input can be active, deleted or all (Default: active)
+active = db.count("active")
 
-# Count only deleted vectors
-deleted = db.count("deleted")
-
-# Count all vectors (including deleted)
-total = db.count("all")
-```
-
-### Stats ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-stats))
-
-```python
 stats = db.stats()
 # {
 #     "version": "...",
 #     "dim": 384,
 #     "metric": "euclidean",
 #     "strategy": "exact_search",
+#     "is_ann_building": false,
 #     "last_saved_at": "...",
 #     "last_deleted_at": "...",
 #     "active_count": 1000,

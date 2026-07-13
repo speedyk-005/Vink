@@ -177,6 +177,11 @@ class VinkraDB:
             else "approximate_search"
         )
 
+    @property
+    def is_ann_building(self) -> bool:
+        """Whether the ANN index is currently being built in the background."""
+        return self._ann_building
+
     def count(self, status: Literal["active", "deleted", "all"] = "active") -> int:
         """Count vectors in the database.
 
@@ -192,9 +197,8 @@ class VinkraDB:
         """Return database statistics and metadata.
 
         Returns:
-            Database metadata including version, dimension, metric, strategy,
-            last_saved_at, last_deleted_at, active_count, deleted_count,
-                and other stored metadata.
+            Database metadata: version, dim, metric, strategy, is_ann_building,
+            last_saved_at, last_deleted_at, active_count, deleted_count.
         """
         return {
             "version": __version__,
@@ -203,6 +207,7 @@ class VinkraDB:
             "strategy": self._records_db["strategy"],
             "last_saved_at": self._records_db["last_saved_at"],
             "last_deleted_at": self._records_db["last_deleted_at"],
+            "is_ann_building": self._ann_building,
             "active_count": self.count("active"),
             "deleted_count": self.count("deleted"),
         }
