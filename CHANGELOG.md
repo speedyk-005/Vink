@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Close idempotency**: `close()` now flips `_closed` after save, so atexit and manual calls don't double-close.
+- **Dim comparison type mismatch**: Cast both sides to `int` before comparing.
+
 ## [0.2.0a1] - 2026-07-13
 
 ### Changed
