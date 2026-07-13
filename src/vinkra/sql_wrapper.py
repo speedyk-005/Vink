@@ -84,7 +84,7 @@ class SQLiteWrapper:
         stored_metric = self["metric"]
 
         new_dim = new_config["dim"]
-        if stored_dim is not None and new_dim != stored_dim:
+        if stored_dim is not None and int(new_dim) != int(stored_dim):
             raise ValueError(
                 f"Dimension mismatch: cannot open existing database with "
                 f"dimension {new_dim}, stored dimension is {stored_dim}"
