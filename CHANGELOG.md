@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`has_buffered` property** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): Check for buffered records via `db.has_buffered`.
+
 ## [0.2.0a2] - 2026-07-13
 
 ### Fixed
