@@ -179,6 +179,14 @@ class SQLiteWrapper:
         )
         return bool(cursor.fetchone()[0])
 
+    def is_empty(self) -> bool:
+        """Return whether there are no active (non-deleted) records."""
+        cursor = self._conn.cursor()
+        cursor.execute(
+            "SELECT EXISTS(SELECT 1 FROM vec_records WHERE deleted = FALSE LIMIT 1)"
+        )
+        return not bool(cursor.fetchone()[0])
+
     @validate_arguments
     def count(self, status: Literal["active", "deleted", "all"] = "active") -> int:
         """Count vectors in the database.

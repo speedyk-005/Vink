@@ -190,6 +190,10 @@ class VinkraDB:
         """Whether buffered records exist from an ANN transition."""
         return self._records_db.has_buffered()
 
+    def is_empty(self) -> bool:
+        """Whether there are no active (non-deleted) records."""
+        return self._records_db.is_empty()
+
     def count(self, status: Literal["active", "deleted", "all"] = "active") -> int:
         """Count vectors in the database.
 
@@ -218,6 +222,7 @@ class VinkraDB:
             "last_deleted_at": self._records_db["last_deleted_at"],
             "is_ann_building": self._is_ann_building,
             "has_buffered": self.has_buffered,
+            "is_empty": self.is_empty,
             "active_count": self.count("active"),
             "deleted_count": self.count("deleted"),
         }
@@ -479,7 +484,7 @@ class VinkraDB:
             or None if the batch is small enough or the DB is not empty.
         """
         if (
-            self.count() > 0
+            not self.is_empty
             or self._latency_predictor.predict(len(vector_records))
             <= self._ann_config.switch_latency_ms
         ):

@@ -303,6 +303,9 @@ db.is_ann_building
 # Whether there are buffered records (from an ANN transition)
 db.has_buffered
 
+# Whether there are no active (non-deleted) records
+db.is_empty
+
 # Count vectors
 active = db.count()      # same as db.count("active") (default)
 deleted = db.count("deleted")

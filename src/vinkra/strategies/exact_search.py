@@ -222,7 +222,7 @@ class ExactSearch(BaseStrategy):
             log_info(self.verbose, "Index already loaded, skipping.")
             return
 
-        if self.db.count("active") == 0:
+        if self.db.is_empty():
             return
 
         with self._rwlock.gen_wlock():
