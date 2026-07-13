@@ -264,7 +264,7 @@ db.save()
 ```
 
 #### Close
-Saves state to disk and closes the SQLite connection cleanly:
+Saves state to disk and closes the SQLite connection cleanly. Registered via `atexit`, so it runs automatically on normal interpreter exit.
 
 ```python
 db.close()

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Auto-save on exit**: `close()` registered via `atexit`; idempotent guard.
 - **Enable SQLite mmap**: Added `PRAGMA mmap_size=256MB` for reduced read overhead.
 - **Switch FTS5 tokenizer to trigram**: Replaced `unicode61` with `trigram` tokenizer for substring content matching.
 - **`count()` defaults to active vectors**: Added `"all"` literal for explicit total count.

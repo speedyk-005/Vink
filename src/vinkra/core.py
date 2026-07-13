@@ -1,3 +1,4 @@
+import atexit
 import shutil
 import time
 import warnings
@@ -150,6 +151,8 @@ class VinkraDB:
         self._rwlock = rwlock.RWLockFair()
 
         self.load()
+        atexit.register(self.close)
+        self._closed = False
 
     @property
     def dir_path(self) -> Path | None:
@@ -345,7 +348,9 @@ class VinkraDB:
         log_info(self.verbose, "Compaction complete.")
 
     def close(self) -> None:
-        """Save and close the database."""
+        """Save and close the database (idempotent)."""
+        if self._closed:
+            return
         self.save()
         self._records_db.close()
 
