@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from conftest import DB_CONFIG
+from conftest import DB_CONFIG, DIM
 
 from vinkra.exceptions import DatabaseCorruptedError
 from vinkra.models import AnnConfig
@@ -21,7 +21,7 @@ def _create_bare_approx_strategy(dir_path: Path) -> ApproximateSearch:
     return ApproximateSearch(
         db=SQLiteWrapper(str(dir_path / DB_PATH), index_config=DB_CONFIG),
         dir_path=dir_path,
-        dim=128,
+        dim=DIM,
         metric="cosine",
         verbose=False,
         ann_config=config,
@@ -34,7 +34,7 @@ def sample_records_20():
     rng = np.random.default_rng(42)
     records = []
     for i in range(20):
-        vec = rng.standard_normal(128, dtype=np.float32)
+        vec = rng.standard_normal(DIM, dtype=np.float32)
         records.append(
             {
                 "id": generate_id_bytes(),

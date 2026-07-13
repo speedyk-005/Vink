@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from conftest import DB_CONFIG
+from conftest import DB_CONFIG, DIM
 
 from vinkra.sql_wrapper import SQLiteWrapper
 from vinkra.strategies.exact_search import ExactSearch
@@ -18,7 +18,7 @@ def exact_search_strategy():
     return ExactSearch(
         db=SQLiteWrapper(":memory:", index_config=DB_CONFIG),
         dir_path=None,
-        dim=128,
+        dim=DIM,
         metric="euclidean",
         verbose=False,
     )
@@ -172,7 +172,7 @@ def test_save_load(sample_embeddings, tmp_path):
     strategy = ExactSearch(
         db=db,
         dir_path=tmp_path,
-        dim=128,
+        dim=DIM,
         metric="euclidean",
         verbose=False,
     )
@@ -193,7 +193,7 @@ def test_save_load(sample_embeddings, tmp_path):
     strategy2 = ExactSearch(
         db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config=DB_CONFIG),
         dir_path=tmp_path,
-        dim=128,
+        dim=DIM,
         metric="euclidean",
         verbose=False,
     )

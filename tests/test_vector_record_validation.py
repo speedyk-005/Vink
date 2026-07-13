@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from conftest import DIM
 
 from vinkra import VinkraDB
 from vinkra.exceptions import InvalidIdError, InvalidInputError, VectorDimensionError
@@ -8,7 +9,7 @@ from vinkra.models import VectorRecord, VectorRecords
 
 def mock_embedding_callback(_text: str) -> np.ndarray:
     """A valid mock callback returning a 128-dim vector."""
-    return np.random.rand(128).astype(np.float32)
+    return np.random.rand(DIM).astype(np.float32)
 
 
 def mock_invalid_dim_callback(_text: str) -> np.ndarray:
@@ -32,7 +33,7 @@ def mock_crashing_callback(_text: str) -> np.ndarray:
 )
 def test_invalid_id(id_val, match):
     """Test that invalid ID raises InvalidIdError."""
-    embedding = np.random.rand(128).astype(np.float32)
+    embedding = np.random.rand(DIM).astype(np.float32)
     with pytest.raises(InvalidIdError, match=match):
         VectorRecord(id=id_val, content="test", embedding=embedding)
 
@@ -59,20 +60,19 @@ def test_vinkdb_init_handshake(callback, expected_exc, match, tmp_path):
     """Test the embedding_callback handshake during VinkraDB initialization."""
     if expected_exc:
         with pytest.raises(expected_exc, match=match):
-            db = VinkraDB(dir_path=tmp_path, dim=128, embedding_callback=callback)
+            db = VinkraDB(dir_path=tmp_path, dim=DIM, embedding_callback=callback)
             if not callback:
                 db.add([{"content": "test"}])
     else:
         # Should initialize without error
-        db = VinkraDB(dir_path=tmp_path, dim=128, embedding_callback=callback)
+        db = VinkraDB(dir_path=tmp_path, dim=DIM, embedding_callback=callback)
         assert db.embedding_callback == callback
 
 
 def test_vinkdb_lazy_embedding(tmp_path):
     """Test that VinkraDB uses the callback to populate missing embeddings in add()."""
-    dim = 128
     db = VinkraDB(
-        dir_path=tmp_path, dim=dim, embedding_callback=mock_embedding_callback
+        dir_path=tmp_path, dim=DIM, embedding_callback=mock_embedding_callback
     )
 
     # Record missing the 'embedding' key
@@ -81,7 +81,7 @@ def test_vinkdb_lazy_embedding(tmp_path):
 
     assert len(ids) == 1
     # Verify the record actually got a vector in the DB (via search)
-    results = db.search(np.random.rand(dim), top_k=1)
+    results = db.search(np.random.rand(DIM), top_k=1)
     assert len(results) == 1
 
 
@@ -90,11 +90,11 @@ def test_vinkdb_lazy_embedding(tmp_path):
     [
         ([[1, 2, 3], [4, 5, 6]], VectorDimensionError),  # Too many rows
         ("not-an-array", InvalidInputError),  # String
-        (np.zeros(128), InvalidInputError),  # Zero-magnitude
+        (np.zeros(DIM), InvalidInputError),  # Zero-magnitude
         # --- Valid Cases ---
-        (np.random.rand(128), None),  # 1D array
-        ([1.0] * 128, None),  # List of floats
-        (np.random.rand(1, 128), None),  # 2D row vector
+        (np.random.rand(DIM), None),  # 1D array
+        ([1.0] * DIM, None),  # List of floats
+        (np.random.rand(1, DIM), None),  # 2D row vector
     ],
 )
 def test_embedding_validation(embedding, exc_type):
@@ -102,28 +102,27 @@ def test_embedding_validation(embedding, exc_type):
     if exc_type:
         with pytest.raises(exc_type):
             VectorRecords(
-                dim=128,
+                dim=DIM,
                 metric="cosine",
                 records=[{"content": "test", "embedding": embedding}],
             )
     else:
         # Should not raise any exception
         records = VectorRecords(
-            dim=128,
+            dim=DIM,
             metric="cosine",
             records=[{"content": "test", "embedding": embedding}],
         )
-        assert records.records[0].embedding.shape == (1, 128)
+        assert records.records[0].embedding.shape == (1, DIM)
         assert np.isclose(np.linalg.norm(records.records[0].embedding), 1.0)
 
 
 def test_dimension_mismatch():
     """Test that dimension mismatch raises VectorDimensionError."""
-    expected_dim = 128
     embedding = np.random.rand(10)
     with pytest.raises(VectorDimensionError):
         VectorRecords(
-            dim=expected_dim,
+            dim=DIM,
             metric="cosine",
             records=[{"content": "test", "embedding": embedding}],
         )
@@ -136,9 +135,9 @@ def test_ann_config_validate_vector_dim():
     # num_subspaces > dim
     config = AnnConfig(num_subspaces=256, codebook_size=8)
     with pytest.raises(VectorDimensionError, match="cannot exceed dim"):
-        config.validate_vector_dim(128)
+        config.validate_vector_dim(DIM)
 
     # dim not divisible by num_subspaces
     config = AnnConfig(num_subspaces=5, codebook_size=8)
     with pytest.raises(VectorDimensionError, match="must be divisible"):
-        config.validate_vector_dim(128)
+        config.validate_vector_dim(DIM)

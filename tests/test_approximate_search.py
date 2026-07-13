@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from conftest import DB_CONFIG
+from conftest import DB_CONFIG, DIM
 
 from vinkra.models import AnnConfig
 from vinkra.sql_wrapper import SQLiteWrapper
@@ -21,7 +21,7 @@ def approx_search_strategy():
     strategy = ApproximateSearch(
         db=SQLiteWrapper(":memory:", index_config=DB_CONFIG),
         dir_path=None,
-        dim=128,
+        dim=DIM,
         metric="euclidean",
         verbose=False,
         ann_config=config,
@@ -30,7 +30,7 @@ def approx_search_strategy():
     # N must be greater than codebook_size (8)
     num_training = 10
     rng = np.random.default_rng(seed=42)
-    train_vectors = rng.standard_normal((num_training, 128), dtype=np.float32)
+    train_vectors = rng.standard_normal((num_training, DIM), dtype=np.float32)
 
     norm = np.linalg.norm(train_vectors, axis=1, keepdims=True)
     train_vectors = train_vectors / (norm + 1e-9)
@@ -160,7 +160,7 @@ def test_compact(approx_search_strategy):
         {
             "id": generate_id_bytes(),
             "content": f"extra {i}",
-            "embedding": rng.standard_normal(128).astype(np.float32),
+            "embedding": rng.standard_normal(DIM).astype(np.float32),
             "metadata": {},
         }
         for i in range(5)
@@ -191,14 +191,14 @@ def test_save_load(tmp_path):
     strategy = ApproximateSearch(
         db=db,
         dir_path=tmp_path,
-        dim=128,
+        dim=DIM,
         metric="euclidean",
         verbose=False,
         ann_config=config,
     )
 
     rng = np.random.default_rng(seed=42)
-    vectors = rng.standard_normal((10, 128), dtype=np.float32)
+    vectors = rng.standard_normal((10, DIM), dtype=np.float32)
 
     ids = [generate_id_bytes() for _ in range(10)]
     strategy.fit(vectors, np.array(ids, dtype="S16"))
@@ -215,7 +215,7 @@ def test_save_load(tmp_path):
     strategy2 = ApproximateSearch(
         db=SQLiteWrapper(f"{tmp_path}/records.sqlite", index_config=DB_CONFIG),
         dir_path=tmp_path,
-        dim=128,
+        dim=DIM,
         metric="euclidean",
         verbose=True,
         ann_config=config,
