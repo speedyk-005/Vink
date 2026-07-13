@@ -424,7 +424,8 @@ class VinkraDB:
         """
         if top_k > MAX_SAFE_TOP_K:
             warnings.warn(
-                f"top_k {top_k} exceeds SQLite limit {MAX_SAFE_TOP_K}, clamping."
+                f"top_k {top_k} exceeds SQLite limit {MAX_SAFE_TOP_K}, clamping.",
+                stacklevel=2,
             )
             top_k = MAX_SAFE_TOP_K
 
