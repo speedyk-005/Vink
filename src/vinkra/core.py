@@ -1,5 +1,6 @@
 import shutil
 import time
+import warnings
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -416,7 +417,11 @@ class VinkraDB:
             List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
-        top_k = min(top_k, MAX_SAFE_TOP_K)
+        if top_k > MAX_SAFE_TOP_K:
+            warnings.warn(
+                f"top_k {top_k} exceeds SQLite limit {MAX_SAFE_TOP_K}, clamping."
+            )
+            top_k = MAX_SAFE_TOP_K
 
         log_info(
             self.verbose,
