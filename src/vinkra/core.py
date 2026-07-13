@@ -1,5 +1,7 @@
+import atexit
 import shutil
 import time
+import warnings
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +28,10 @@ from vinkra.utils.input_validation import (
     validate_id,
 )
 from vinkra.utils.logging import log_info, logger
+
+# Modern SQLite handles up to 32766 params, which no realistic top_k will hit.
+# https://stackoverflow.com/a/19358052
+MAX_SAFE_TOP_K = 32766
 
 
 class VinkraDB:
@@ -145,6 +151,8 @@ class VinkraDB:
         self._rwlock = rwlock.RWLockFair()
 
         self.load()
+        atexit.register(self.close)
+        self._closed = False
 
     @property
     def dir_path(self) -> Path | None:
@@ -173,11 +181,16 @@ class VinkraDB:
             else "approximate_search"
         )
 
-    def count(self, status: Literal["active", "deleted"] | None = None) -> int:
+    @property
+    def is_ann_building(self) -> bool:
+        """Whether the ANN index is currently being built in the background."""
+        return self._ann_building
+
+    def count(self, status: Literal["active", "deleted", "all"] = "active") -> int:
         """Count vectors in the database.
 
         Args:
-            status: Which vectors to count. Count all if not provided.
+            status: Which vectors to count. Defaults to "active".
 
         Returns:
             Count of vectors.
@@ -188,9 +201,8 @@ class VinkraDB:
         """Return database statistics and metadata.
 
         Returns:
-            Database metadata including version, dimension, metric, strategy,
-            last_saved_at, last_deleted_at, active_count, deleted_count,
-                and other stored metadata.
+            Database metadata: version, dim, metric, strategy, is_ann_building,
+            last_saved_at, last_deleted_at, active_count, deleted_count.
         """
         return {
             "version": __version__,
@@ -199,6 +211,7 @@ class VinkraDB:
             "strategy": self._records_db["strategy"],
             "last_saved_at": self._records_db["last_saved_at"],
             "last_deleted_at": self._records_db["last_deleted_at"],
+            "is_ann_building": self._ann_building,
             "active_count": self.count("active"),
             "deleted_count": self.count("deleted"),
         }
@@ -299,11 +312,11 @@ class VinkraDB:
         return assigned_ids
 
     @validate_arguments
-    def soft_delete(self, ids: list[str]) -> None:
+    def soft_delete(self, ids: list[str | bytes]) -> None:
         """Soft-delete vectors from the index by their IDs (marks as deleted).
 
         Args:
-            ids: List of UUIDv7 IDs to soft-delete.
+            ids: UUIDv7 IDs as strings or raw bytes.
         """
         log_info(self.verbose, "Soft-deleting {} vectors from index.", len(ids))
 
@@ -335,10 +348,14 @@ class VinkraDB:
         log_info(self.verbose, "Compaction complete.")
 
     def close(self) -> None:
-        """Save and close the database."""
+        """Save and close the database (idempotent)."""
+        if self._closed:
+            return
+
         self.save()
         self._records_db.close()
-
+        self._closed = True
+      
     def save(self) -> None:
         """Save the index to disk."""
         log_info(self.verbose, "Saving index to {}.", self._dir_path)
@@ -407,6 +424,13 @@ class VinkraDB:
             List of dicts with 'id', 'content', 'metadata', 'distance',
                 and optionally 'embedding' (if include_vectors is True).
         """
+        if top_k > MAX_SAFE_TOP_K:
+            warnings.warn(
+                f"top_k {top_k} exceeds SQLite limit {MAX_SAFE_TOP_K}, clamping.",
+                stacklevel=2,
+            )
+            top_k = MAX_SAFE_TOP_K
+
         log_info(
             self.verbose,
             "Searching for {} nearest neighbors using {}.",

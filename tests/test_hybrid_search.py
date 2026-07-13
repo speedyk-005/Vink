@@ -38,7 +38,7 @@ def test_switch_triggers(vinkdb, sample_records, mocker):
     # Poll until build completes (ANN runs in a background thread)
     timeout = 5
     start = time.time()
-    while vinkdb._ann_building and (time.time() - start) < timeout:
+    while vinkdb.is_ann_building and (time.time() - start) < timeout:
         time.sleep(0.5)
 
     assert vinkdb.strategy == "approximate_search", (

@@ -8,7 +8,7 @@
   <b>V</b>ector <b>In</b>cremental <b>N</b>ano <b>K</b>it — <b>R</b>econfigurated <b>A</b>utomatically
 </p>
 <p align="center">
-  “Vector DB that self-organizes. Auto-switch, Auto-tune, Auto-scale.”
+  “Vector DB that self-organizes. Auto-switch, auto-tune, auto-scale.”
 </p>
 
 [![Python Version](https://img.shields.io/badge/Python-3.9%20--%203.14-blue)](https://www.python.org/downloads/)
@@ -24,21 +24,23 @@
 
 ---
 
-## 🤔 So What's vinkra Anyway? (And Why Should You Care?)
+## 🤔 Vinkra? What's that?
 
-Most vector databases force a trade-off: you either over-engineer for small datasets or hit a performance cliff as you scale. You’re left babysitting indices, manually tuning parameters, and praying your hardware can keep up.
+Most vector databases force a trade-off: over-engineer for small datasets or hit a performance cliff as you scale. You're left tuning parameters by hand, managing indices, and hoping your hardware keeps up.
 
-**Vinkra** eliminates the guesswork. It automatically switches from **Exact Search** (for 100% precision) to **ANN** (for massive scale with IVF-PQ) based on dataset size and runtime latency. Whether you are running on a mobile device or a high-end server, Vinkra adapts its optimization strategy to your hardware and data distribution.
+**Vinkra** eliminates the guesswork. It automatically switches from **Exact Search** (for 100% precision) to **ANN** (for massive scale with IVF-PQ) based on dataset size and runtime latency. Vinkra adapts its strategy to your hardware and data, whether on a mobile device or a server.
 
-| Feature | Why it's awesome |
+It uses a Power Law model (y = a * x^b) to predict search latency based on the number of vectors in the index. Initial calibration measures raw BLAS performance, then online tuning refines parameters with actual runtime measurements.
+
+| Feature | Description |
 | :--- | :--- |
 | ➕ **Incremental Inserts** | Add vectors anytime. Your index grows with your data, not against it. |
-| 📟 **Hardware-Aware Auto-Switch** | It figures out when to ditch exact search and switch to ANN based on latency prediction. |
-| ⚙️ **Self-Tuning Engine** | Background reconfiguration keeps clusters fresh as your data evolves. |
+| 📟 **Hardware-Aware Auto-Switch** | Automatically switches to ANN when latency exceeds your threshold. |
+| ⚙️ **Self-Tuning Engine** | Background reconfiguration adapts clusters as your data evolves. |
 | 🎯 **Production-Ready Search** | Filtered searches, soft deletes, compact, dual-metric (Euclidean + cosine). |
 | 💾 **Explicit Storage** | Disk or memory — you control where your data lives. |
 
-Unlike enterprise solutions (Milvus, Pinecone) that require complex Docker or cloud setup, Vinkra runs entirely local with zero dependencies beyond pip install.
+Unlike enterprise solutions (Milvus, Pinecone) that require complex Docker or cloud setup, Vinkra runs entirely local with no dependencies beyond pip install.
 
 ---
 
@@ -113,7 +115,7 @@ The demo uses:
 - `dim=128`
 - Batches of 10,000 vectors
 
-The switch happens when latency exceeds `switch_latency_ms`. A Power Law model (`y = a * x^b`) continuously tunes itself from actual search latencies to predict future performance. New vectors are buffered during the switch with zero downtime.
+The switch happens when latency exceeds `switch_latency_ms`.
 
 Example output:
 
@@ -177,7 +179,7 @@ with VinkraDB(dim=384, dir_path="./data") as db:
 
 #### AnnConfig ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-models-AnnConfig))
 
-Want custom ANN configurations and custom latency thresholds? Pass them through `AnnConfig`:
+For custom ANN tuning, configure `AnnConfig` and pass it to `VinkraDB`:
 
 ```python
 from vinkra import AnnConfig, VinkraDB
@@ -197,7 +199,7 @@ AnnConfig.help()
 
 ### Add ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-add))
 
-Records accept the following schema structures:
+Records accept the following:
 - `content` (required): text payload to track
 - `embedding` (required if no callback configured): list of floats or 1D/2D numpy array
 - `id` (optional): string representation of a valid UUIDv7
@@ -257,14 +259,14 @@ results = db.search(
 ### Persistence & Index Maintenance
 
 #### Save
-If you are manually managing your resource lifetimes instead of applying the context manager pipeline, write your current index to disk space directly:
+If you manage resources manually instead of using the context manager, write the index to disk:
 
 ```python
 db.save()
 ```
 
 #### Close
-Flushes the state tracker to disk parameters, flushes the runtime matrix configurations, and securely shuts down active transactional access structures in SQLite:
+Saves state to disk and closes the SQLite connection cleanly. Registered via `atexit`, so it runs automatically on normal interpreter exit.
 
 ```python
 db.close()
@@ -272,7 +274,7 @@ db.close()
 
 #### Soft deletion ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-soft_delete))
 
-Hides elements immediately from subsequent query pipelines without triggering expensive matrix reorganization:
+Marks vectors as deleted without rebuilding the index:
 
 ```python
 db.soft_delete(["0192a5b4-7f3c-7d6e-9a1b-2c3d4e5f6a7b"])
@@ -280,24 +282,36 @@ db.soft_delete(["0192a5b4-7f3c-7d6e-9a1b-2c3d4e5f6a7b"])
 
 #### Compaction ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-compact))
 
-Purges soft-deleted tracking footprints permanently and forces an index structural rebuild:
+Removes soft-deleted vectors and rebuilds the index:
 
 ```python
 db.compact()
 ```
 
 > [!WARNING]
-> Running compaction on active `approximate_search` nodes can freeze workflows for 20-200+ seconds to calculate codebook states. Offload this into scheduled system maintenance hours.
+> Compaction on an active `approximate_search` index can block queries for 20-200+ seconds while it rebuilds the codebook. Run during maintenance windows.
 
 ### Stats ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-stats))
 
 ```python
+# Check which search strategy is currently active
+db.strategy  # "exact_search" or "approximate_search"
+
+# Whether the ANN index is currently being built in the background
+db.is_ann_building
+
+# Count vectors
+active = db.count()      # same as db.count("active") (default)
+deleted = db.count("deleted")
+total = db.count("all")
+
 stats = db.stats()
 # {
 #     "version": "...",
 #     "dim": 384,
 #     "metric": "euclidean",
 #     "strategy": "exact_search",
+#     "is_ann_building": false,
 #     "last_saved_at": "...",
 #     "last_deleted_at": "...",
 #     "active_count": 1000,
@@ -324,8 +338,7 @@ stats = db.stats()
 
 ## 🔧 Core Dependencies
 
-[rii](https://github.com/matsui528/rii) •
-[nanopq](https://github.com/matsui528/nanopq) • [scipy](https://scipy.org) • [numpy](https://numpy.org) • [SQLite](https://sqlite.org)
+[rii](https://github.com/matsui528/rii) • [nanopq](https://github.com/matsui528/nanopq) • [scipy](https://scipy.org) • [numpy](https://numpy.org) • [SQLite](https://sqlite.org)
 
 ---
 
@@ -339,4 +352,4 @@ Bug fixes, features, docs — all welcome. Check out [CONTRIBUTING.md](https://g
 
 Check out the [LICENSE](https://github.com/speedyk-005/vinkra/blob/main/LICENSE) file for all the details.
 
-> MIT License. Use freely, modify boldly, and credit appropriately!
+> MIT License — use freely, modify, and credit accordingly.

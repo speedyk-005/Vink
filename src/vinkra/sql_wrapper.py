@@ -29,6 +29,7 @@ class SQLiteWrapper:
         """
         self._conn = sqlite3.connect(path, check_same_thread=False, timeout=10)
         self._conn.execute("PRAGMA journal_mode=WAL;")
+        self._conn.execute("PRAGMA mmap_size=268435456;")  # 256 MB
         self._ensure_tables_exist()
         self._validate_config(index_config)
 
@@ -57,7 +58,8 @@ class SQLiteWrapper:
         cursor.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS content_fts5 USING fts5(
                 id UNINDEXED,
-                content
+                content,
+                tokenize='trigram'
             )
          """)
 
@@ -82,7 +84,7 @@ class SQLiteWrapper:
         stored_metric = self["metric"]
 
         new_dim = new_config["dim"]
-        if stored_dim is not None and new_dim != stored_dim:
+        if stored_dim is not None and int(new_dim) != int(stored_dim):
             raise ValueError(
                 f"Dimension mismatch: cannot open existing database with "
                 f"dimension {new_dim}, stored dimension is {stored_dim}"
@@ -170,11 +172,11 @@ class SQLiteWrapper:
         return cursor.fetchall()
 
     @validate_arguments
-    def count(self, status: Literal["active", "deleted"] | None = None) -> int:
+    def count(self, status: Literal["active", "deleted", "all"] = "active") -> int:
         """Count vectors in the database.
 
         Args:
-            status: Which vectors to count. Count all if not provided.
+            status: Which vectors to count. Defaults to "active".
 
         Returns:
             Count of vectors.

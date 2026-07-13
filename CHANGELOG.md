@@ -7,10 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.2.0a2] - 2026-07-13
+
+### Fixed
+
+- **Close idempotency**: `close()` now flips `_closed` after save, so atexit and manual calls don't double-close.
+- **Dim comparison type mismatch**: Cast both sides to `int` before comparing.
+
+## [0.2.0a1] - 2026-07-13
 
 ### Changed
 
+- **Auto-save on exit**: `close()` registered via `atexit`; idempotent guard.
+- **Enable SQLite mmap**: Added `PRAGMA mmap_size=256MB` for reduced read overhead.
+- **Switch FTS5 tokenizer to trigram**: Replaced `unicode61` with `trigram` tokenizer for substring content matching.
+- **`count()` defaults to active vectors**: Added `"all"` literal for explicit total count.
+- **`is_ann_building` property**: Public read-only access to ANN build status.
 - **Code quality improvements** ([#2](https://github.com/speedyk-005/vinkra/pull/2)):
   - Removed `in_memory` parameter; persistence inferred from `dir_path` instead.
   - Moved `FilterToSql.translate` into `BaseStrategy`, deduplicated per-strategy implementations.
@@ -19,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Stripped type hints from docstrings; removed `_format_docstrings.py` and `_strip_docstring_types.py`.
   - Expanded ruff lint rules (FBT, ARG, RET, ...); fixes applied throughout.
   - Updated README with professional tone and correct usage
+
+### Fixed
+
+- **Clamp `top_k` to SQLite parameter limit**: Warn and clamps to 32766 to avoid hitting the SQLite max-params limit.
 
 ## [0.1.0a2] - 2026-07-10
 
