@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`has_buffered` property** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): Check for buffered records via `db.has_buffered`.
 - **`is_empty` property** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): Check if there are no active records via `db.is_empty`.
+- **ANN transition recovery** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): `load()` replays buffered records when stale buffer data is detected, resuming an interrupted transition.
+
+### Changed
+
+- **ANN transition recovery** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): `load()` replays buffered records when stale buffer data is detected, resuming an interrupted transition.
 
 ## [0.2.0a2] - 2026-07-13
 

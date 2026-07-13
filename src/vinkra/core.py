@@ -409,6 +409,15 @@ class VinkraDB:
 
             self._latency_predictor = LatencyPredictor(dim=self._dim)
 
+        # Recover interrupted ANN transition by replaying buffered records
+        if (
+            self.has_buffered
+            and self.strategy == "exact_search"
+            and self._should_switch()
+        ):
+            self._is_ann_building = True
+            Thread(target=self._prepare_approx_strategy, daemon=True).start()
+
         log_info(self.verbose, "Index loaded successfully.")
 
     @validate_arguments
