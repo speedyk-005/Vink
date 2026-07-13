@@ -289,6 +289,13 @@ db.compact()
 > [!WARNING]
 > Running compaction on active `approximate_search` nodes can freeze workflows for 20-200+ seconds to calculate codebook states. Offload this into scheduled system maintenance hours.
 
+### Strategy
+
+```python
+# Check which search strategy is currently active
+db.strategy  # "exact_search" or "approximate_search"
+```
+
 ### Count ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-count))
 
 ```python
