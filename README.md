@@ -8,7 +8,7 @@
   <b>V</b>ector <b>In</b>cremental <b>N</b>ano <b>K</b>it — <b>R</b>econfigurated <b>A</b>utomatically
 </p>
 <p align="center">
-  “Vector DB that self-organize. Auto-switch, Auto-tune, Auto-scale.”
+  “Vector DB that self-organizes. Auto-switch, Auto-tune, Auto-scale.”
 </p>
 
 [![Python Version](https://img.shields.io/badge/Python-3.9%20--%203.14-blue)](https://www.python.org/downloads/)
@@ -24,45 +24,11 @@
 
 ---
 
-## Table of Contents
-
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
-
-- [🤔 So What's vinkra Anyway? (And Why Should You Care?)](#-so-whats-vinkra-anyway-and-why-should-you-care)
-- [📦 Installation](#-installation)
-  - [The Quick & Easy Way](#the-quick--easy-way)
-  - [The From-Source Way](#the-from-source-way)
-- [✅ Proof It Works](#-proof-it-works)
-- [🚀 Usage](#-usage)
-  - [Initialization (VinkraDB API)](#initialization-vinkradb-api)
-    - [AnnConfig (API)](#annconfig-api)
-  - [Add (API)](#add-api)
-    - [With embedding callback](#with-embedding-callback)
-    - [Without callback](#without-callback)
-  - [Search (API)](#search-api)
-    - [Without filters](#without-filters)
-    - [With filters](#with-filters)
-  - [Delete](#delete)
-    - [Soft deletion (API)](#soft-deletion-api)
-    - [Compaction (API)](#compaction-api)
-  - [Stats (API)](#stats-api)
-- [🚨 Exceptions (API)](#-exceptions-api)
-- [🗺 Features & Roadmap](#-features--roadmap)
-- [🔧 Core Dependencies](#-core-dependencies)
-- [🤝 Contributing](#-contributing)
-- [📜 License](#-license)
-
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
-
----
-
 ## 🤔 So What's vinkra Anyway? (And Why Should You Care?)
 
 Most vector databases force a trade-off: you either over-engineer for small datasets or hit a performance cliff as you scale. You’re left babysitting indices, manually tuning parameters, and praying your hardware can keep up.
 
-**Vink** eliminates the guesswork. It automatically switches from **Exact Search** (for 100% precision) to **ANN** (for massive scale with IVF-PQ) based on dataset size and runtime latency. Whether you are running on a mobile device or a high-end server, Vink adapts its optimization strategy to your hardware and data distribution.
+**Vinkra** eliminates the guesswork. It automatically switches from **Exact Search** (for 100% precision) to **ANN** (for massive scale with IVF-PQ) based on dataset size and runtime latency. Whether you are running on a mobile device or a high-end server, Vinkra adapts its optimization strategy to your hardware and data distribution.
 
 | Feature | Why it's awesome |
 | :--- | :--- |
@@ -72,9 +38,7 @@ Most vector databases force a trade-off: you either over-engineer for small data
 | 🎯 **Production-Ready Search** | Filtered searches, soft deletes, compact, dual-metric (Euclidean + cosine). |
 | 💾 **Explicit Storage** | Disk or memory — you control where your data lives. |
 
-Unlike enterprise solutions (Milvus, Pinecone) that require complex Docker or cloud setup, Vink runs entirely local — zero dependencies beyond pip install.
-
-And that's just the start - there's plenty more to explore!
+Unlike enterprise solutions (Milvus, Pinecone) that require complex Docker or cloud setup, Vinkra runs entirely local with zero dependencies beyond pip install.
 
 ---
 
@@ -132,8 +96,6 @@ cd vinkra
 pip install -e .
 ```
 
-(But honestly, the pip way is usually way easier!)
-
 ---
 
 ## ✅ Proof It Works
@@ -147,13 +109,11 @@ python demo_poc.py
 ```
 
 The demo uses:
-- `switch_latency_ms=120` (vs 300 default) — triggers switch sooner
+- `switch_latency_ms=120` inside `AnnConfig` to trigger the switch sooner
 - `dim=128`
 - Batches of 10,000 vectors
 
 The switch happens when latency exceeds `switch_latency_ms`. A Power Law model (`y = a * x^b`) continuously tunes itself from actual search latencies to predict future performance. New vectors are buffered during the switch with zero downtime.
-
-Results vary by hardware and system load — faster machines switch later, and running other programs will affect timing.
 
 Example output:
 
@@ -172,6 +132,9 @@ Example output:
 ✓ ANN switch successfully triggered!
 ```
 
+> [!NOTE]
+> Results vary by hardware and system load. Faster machines switch later, and running other programs will affect timing.
+
 ---
 
 ## 🚀 Usage
@@ -184,73 +147,81 @@ from vinkra import VinkraDB
 # Create a database with 128-dimensional vectors
 db = VinkraDB(dim=128, dir_path="./data")
 
-# Or use in-memory mode (no persistence, just omit dir_path)
-db = VinkraDB(dim=128)
+# Or use volatile in-memory mode (omit dir_path)
+# db = VinkraDB(dim=128)
 
-# With custom settings
+# Full configuration capabilities
 db = VinkraDB(
     dim=384,
     dir_path="./data",
-    metric="euclidean",       # or "cosine" (default: euclidean)
-    force_exact=False,         # or True to disable ANN (default: False)
-    ann_config=None,           # ANNConfig for PQ/OPQ (default: auto-generated)
-    switch_latency_ms=300,    # ms threshold for ANN switch (default: 300)
-    embedding_callback=None,  # fn to generate embeddings from content
-    overwrite=False,          # overwrite existing index (default: False)
-    verbose=False              # enable verbose output (default: False)
+    metric="euclidean",         # or "cosine" (default: euclidean)
+    force_exact=False,          # Set to True to completely lock it out of ANN mode
+    ann_config=None,            # Provide custom AnnConfig instance (default: auto-generated)
+    embedding_callback=None,    # Optional function to generate vectors from raw content text
+    overwrite=False,            # Blow away existing directory index if True
+    verbose=False               # Enable internal runtime diagnostic logs
 )
+```
+
+#### Context Manager (Recommended)
+VinkraDB fully implements Python's context manager interface. Using a `with` block guarantees your in-flight buffers flush cleanly to disk and the underlying SQLite engine closes its connections safely without dangling file locks, even if your code raises unhandled exceptions.
+
+```python
+from vinkra import VinkraDB
+
+with VinkraDB(dim=384, dir_path="./data") as db:
+    db.add([{"content": "Seamless storage context"}])
+
+# The database saves and shuts down gracefully right here
 ```
 
 #### AnnConfig ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-models-AnnConfig))
 
-Want custom ANN settings?
+Want custom ANN configurations and custom latency thresholds? Pass them through `AnnConfig`:
 
 ```python
-from vinkra import AnnConfig
+from vinkra import AnnConfig, VinkraDB
 
 config = AnnConfig(
-    num_subspaces=16,        # number of sub-vectors (default: 32)
-    quantizer="pq",           # "pq" or "opq" (default: pq)
-    codebook_size=128,        # centroids per subspace (default: 256)
+    num_subspaces=16,          # number of sub-vectors (default: 32)
+    quantizer="pq",            # "pq" or "opq" (default: pq)
+    codebook_size=128,         # centroids per subspace (default: 256)
+    switch_latency_ms=150      # Runtime latency milestone to trigger ANN switch (default: 300)
+    reconfig_threshold=100_000 # Inserts before reconfiguring the index on search performance (default: 100k)
 )
 db = VinkraDB(dim=384, dir_path="./data", ann_config=config)
 
-# print all available options:
+# Print all available technical constraints and options:
 AnnConfig.help()
 ```
 
 ### Add ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-add))
 
-Records need:
+Records accept the following schema structures:
+- `content` (required): text payload to track
+- `embedding` (required if no callback configured): list of floats or 1D/2D numpy array
+- `id` (optional): string representation of a valid UUIDv7
+- `metadata` (optional): dictionary containing scalar filtering targets
 
-- `content` (required): text to store
-- `embedding` (required if no callback): list of floats or numpy array, shape `(d,)` or `(1, d)`
-- `id` (optional): valid UUIDv7
-- `metadata` (optional): dict of key-value pairs
+#### Without callback
 
-Provide embeddings directly or use a callback to generate them on the fly.
+```python
+db.add([
+    {"content": "Hello world", "embedding": [0.1] * 384, "metadata": {"source": "doc1"}},
+    {"content": "Another text", "embedding": [0.2] * 384}
+])
+```
 
 #### With embedding callback
 
 ```python
 db = VinkraDB(dim=384, dir_path="./data", embedding_callback=my_embedding_fn)
 
-# Just provide content — embeddings generated automatically
+# Omit 'embedding' keys; generated entirely under the hood
 db.add([
     {"content": "Hello world", "metadata": {"source": "doc1"}},
     {"content": "Another text"},
 ])
-```
-
-#### Without callback
-
-Provide embeddings directly:
-
-```python
-db.add([
-    {"content": "Hello world", "embedding": [0.1] * 384, "metadata": {"source": "doc1"}},
-    {"content": "Another text", "embedding": [0.2] * 384}}
-)]
 ```
 
 ### Search ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-search))
@@ -265,18 +236,17 @@ Results include:
 
 #### Without filters
 ```python
-# Basic search
 results = db.search(query_vec=[0.1] * 384, top_k=5)
 
-# Include embeddings in results
+# Include source embeddings in output mapping
 results = db.search(query_vec=[0.1] * 384, include_vectors=True)
 ```
 
 #### With filters
 
-Filter syntax supports `==`, `!=`, `>`, `<`, `>=`, `<=` with strings, numbers, and booleans. More operators coming in future updates.
+Filters are checked before similarity metrics hit vectors. Operators support `==`, `!=`, `>`, `<`, `>=`, `<=` matching against string, numeric, and boolean literals.
 
-```
+```python
 results = db.search(
     query_vec=[0.1] * 384,
     top_k=10,
@@ -284,37 +254,48 @@ results = db.search(
 )
 ```
 
-### Delete
+### Persistence & Index Maintenance
+
+#### Save
+If you are manually managing your resource lifetimes instead of applying the context manager pipeline, write your current index to disk space directly:
+
+```python
+db.save()
+```
+
+#### Close
+Flushes the state tracker to disk parameters, flushes the runtime matrix configurations, and securely shuts down active transactional access structures in SQLite:
+
+```python
+db.close()
+```
 
 #### Soft deletion ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-soft_delete))
 
-Soft-delete vectors by ID without rebuilding the index — fast and efficient.
+Hides elements immediately from subsequent query pipelines without triggering expensive matrix reorganization:
 
 ```python
-# IDs come from search results or when adding
-db.soft_delete(["0192a5b4-7f3c-7d6e-9a1b-2c3d4e5f6a7b", "0192a5b4-7f3c-7d6e-9a1b-2c3d4e5f6a7c"])
+db.soft_delete(["0192a5b4-7f3c-7d6e-9a1b-2c3d4e5f6a7b"])
 ```
 
 #### Compaction ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-compact))
 
-Actually remove soft-deleted records and reclaim storage:
+Purges soft-deleted tracking footprints permanently and forces an index structural rebuild:
 
 ```python
 db.compact()
 ```
 
 > [!WARNING]
-> Can take 20-200+ seconds with `approximate strategy` depending on data size. Run during maintenance windows or off-peak hours. If not enough vectors remain to retrain the codec, rebuild is skipped.
+> Running compaction on active `approximate_search` nodes can freeze workflows for 20-200+ seconds to calculate codebook states. Offload this into scheduled system maintenance hours.
 
 ### Stats ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-stats))
-
-Get database statistics:
 
 ```python
 stats = db.stats()
 # {
 #     "version": "...",
-#     "dimension": 128,
+#     "dim": 384,
 #     "metric": "euclidean",
 #     "strategy": "exact_search",
 #     "last_saved_at": "...",
@@ -326,25 +307,12 @@ stats = db.stats()
 
 ---
 
-## 🚨 Exceptions ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-exceptions))
-
-Something go wrong?
-
-| Exception | When it hits |
-| :--- | :--- |
-| `InvalidInputError` | Bad data or invalid params |
-| `VectorDimensionError` | Embedding dim mismatch |
-| `InvalidIdError` | Malformed UUIDv7 |
-| `FilterError` | Bad filter syntax |
-
----
-
 ## 🗺 Features & Roadmap
 
 - [x] Incremental Inserts
 - [x] Hardware-Aware Auto-Switch
 - [x] Soft deletes + compact
-- [x] Save/Load
+- [x] Save/Load + Context Manager
 - [ ] Filter DSL
   - [x] basic filters: Quick Comparison
   - [ ] Complex Filters: Content Matching, Null Checks, date/time literals, ...
@@ -356,11 +324,8 @@ Something go wrong?
 
 ## 🔧 Core Dependencies
 
-- [rii](https://github.com/matsui528/rii) — C++ ANN library with pybind11 bindings (IVF-PQ index storage)
-- [nanopq](https://github.com/matsui528/nanopq) — Pure Python PQ encoding/decoding
-- [scipy](https://scipy.org) — Scientific computing (distance calculations)
-- [numpy](https://numpy.org) — Numerical computing
-- [SQLite](https://sqlite.org) — Metadata storage (content, embeddings, metadata), filtering queries
+[rii](https://github.com/matsui528/rii) •
+[nanopq](https://github.com/matsui528/nanopq) • [scipy](https://scipy.org) • [numpy](https://numpy.org) • [SQLite](https://sqlite.org)
 
 ---
 
@@ -374,5 +339,4 @@ Bug fixes, features, docs — all welcome. Check out [CONTRIBUTING.md](https://g
 
 Check out the [LICENSE](https://github.com/speedyk-005/vinkra/blob/main/LICENSE) file for all the details.
 
-> MIT License. Use freely, modify boldly, and credit appropriately! (We're not that legendary... yet 😉)
-
+> MIT License. Use freely, modify boldly, and credit appropriately!

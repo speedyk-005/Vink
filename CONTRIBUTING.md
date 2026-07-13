@@ -41,12 +41,6 @@ cd vinkra
     pip install -e ".[dev]"
     ```
 
-<!-- 4. **Run the demo** to verify everything works:
-
-    ```bash
-    python demo_poc.py
-    ``` -->
-
 ## Making Changes
 
 1. **Create a new branch:** Use descriptive names like `feature/my-feature-branch` or `bugfix/issue-number-description`
