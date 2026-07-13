@@ -171,11 +171,11 @@ class SQLiteWrapper:
         return cursor.fetchall()
 
     @validate_arguments
-    def count(self, status: Literal["active", "deleted"] | None = None) -> int:
+    def count(self, status: Literal["active", "deleted", "all"] = "active") -> int:
         """Count vectors in the database.
 
         Args:
-            status: Which vectors to count. Count all if not provided.
+            status: Which vectors to count. Defaults to "active".
 
         Returns:
             Count of vectors.

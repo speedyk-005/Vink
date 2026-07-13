@@ -289,6 +289,19 @@ db.compact()
 > [!WARNING]
 > Running compaction on active `approximate_search` nodes can freeze workflows for 20-200+ seconds to calculate codebook states. Offload this into scheduled system maintenance hours.
 
+### Count ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-count))
+
+```python
+# Default: count active (non-deleted) vectors
+active = db.count()   # same as db.count("active")
+
+# Count only deleted vectors
+deleted = db.count("deleted")
+
+# Count all vectors (including deleted)
+total = db.count("all")
+```
+
 ### Stats ([API](https://github.com/speedyk-005/vinkra/blob/main/API_REFERENCES.md#vinkra-core-VinkraDB-stats))
 
 ```python
