@@ -171,6 +171,14 @@ class SQLiteWrapper:
         cursor.execute(sql, params or [])
         return cursor.fetchall()
 
+    def has_buffered(self) -> bool:
+        """Return whether any buffered records exist."""
+        cursor = self._conn.cursor()
+        cursor.execute(
+            "SELECT EXISTS(SELECT 1 FROM vec_records WHERE buffered = TRUE LIMIT 1)"
+        )
+        return bool(cursor.fetchone()[0])
+
     @validate_arguments
     def count(self, status: Literal["active", "deleted", "all"] = "active") -> int:
         """Count vectors in the database.

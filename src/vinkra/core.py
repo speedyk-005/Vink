@@ -147,7 +147,7 @@ class VinkraDB:
         )
 
         # Threading components for ANN auto-switch
-        self._ann_building = False
+        self._is_ann_building = False
         self._rwlock = rwlock.RWLockFair()
 
         self.load()
@@ -184,7 +184,11 @@ class VinkraDB:
     @property
     def is_ann_building(self) -> bool:
         """Whether the ANN index is currently being built in the background."""
-        return self._ann_building
+        return self._is_ann_building
+
+    def has_buffered(self) -> bool:
+        """Whether buffered records exist from an ANN transition."""
+        return self._records_db.has_buffered()
 
     def count(self, status: Literal["active", "deleted", "all"] = "active") -> int:
         """Count vectors in the database.
@@ -202,7 +206,8 @@ class VinkraDB:
 
         Returns:
             Database metadata: version, dim, metric, strategy, is_ann_building,
-            last_saved_at, last_deleted_at, active_count, deleted_count.
+            has_buffered, last_saved_at, last_deleted_at, active_count,
+            deleted_count.
         """
         return {
             "version": __version__,
@@ -211,7 +216,8 @@ class VinkraDB:
             "strategy": self._records_db["strategy"],
             "last_saved_at": self._records_db["last_saved_at"],
             "last_deleted_at": self._records_db["last_deleted_at"],
-            "is_ann_building": self._ann_building,
+            "is_ann_building": self._is_ann_building,
+            "has_buffered": self.has_buffered,
             "active_count": self.count("active"),
             "deleted_count": self.count("deleted"),
         }
@@ -289,7 +295,7 @@ class VinkraDB:
 
         validated_records = [r.model_dump() for r in validated.records]
 
-        if self._ann_building:
+        if self._is_ann_building:
             assigned_ids = [r["id"] for r in validated_records]
             self._records_db.insert(validated_records, is_buffer=True)
             log_info(
@@ -303,7 +309,7 @@ class VinkraDB:
 
         # Check if switch should be triggered based on new count
         if self.strategy == "exact_search" and self._should_switch():
-            self._ann_building = True
+            self._is_ann_building = True
             Thread(target=self._prepare_approx_strategy, daemon=True).start()
 
         log_info(
@@ -323,7 +329,7 @@ class VinkraDB:
         id_bytes = [validate_id(id_str) for id_str in ids]
 
         # If ANN is building, write to buffer for replay after switch
-        if self.strategy != "approximate_search" and self._ann_building:
+        if self.strategy == "exact_search" and self._is_ann_building:
             self._records_db.soft_delete(id_bytes)
             self._records_db["last_deleted_at"] = datetime.now(UTC).isoformat()
             log_info(
@@ -355,7 +361,7 @@ class VinkraDB:
         self.save()
         self._records_db.close()
         self._closed = True
-      
+
     def save(self) -> None:
         """Save the index to disk."""
         log_info(self.verbose, "Saving index to {}.", self._dir_path)
@@ -551,7 +557,7 @@ class VinkraDB:
         with self._rwlock.gen_wlock():
             self._strategy = strategy
 
-        self._ann_building = False
+        self._is_ann_building = False
 
         cursor = self._records_db.conn.cursor()
         buffer_rows = cursor.execute("""
