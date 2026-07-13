@@ -23,7 +23,6 @@ def vinkdb(tmp_path, request):
     )
 
 
-@pytest.mark.flaky(reruns=5)
 def test_switch_triggers(vinkdb, sample_records, mocker):
     """Test that switch to ANN when _should_switch returns True."""
     assert vinkdb.strategy == "exact_search", "Should start with exact search"
@@ -36,11 +35,7 @@ def test_switch_triggers(vinkdb, sample_records, mocker):
     mocker.patch.object(vinkdb, "_should_switch", return_value=True)
     vinkdb.add(sample_records[7:])
 
-    assert vinkdb._ann_building is True, (
-        "Rerun test - ANN build may complete too fast to catch"
-    )
-
-    # Poll until build completes
+    # Poll until build completes (ANN runs in a background thread)
     timeout = 5
     start = time.time()
     while vinkdb._ann_building and (time.time() - start) < timeout:
