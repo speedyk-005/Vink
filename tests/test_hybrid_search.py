@@ -46,6 +46,35 @@ def test_switch_triggers(vinkdb, sample_records, mocker):
     )
 
 
+@pytest.mark.parametrize("vinkdb", [{"force_exact": False}], indirect=True)
+def test_recover_buffered_on_load(vinkdb, sample_records, mocker):
+    """Simulate a crash mid-transition and verify recovery on reload."""
+    vinkdb.add(sample_records[:7])
+    assert vinkdb.strategy == "exact_search"
+    assert vinkdb.has_buffered() is False
+
+    # Trigger switch
+    mocker.patch.object(vinkdb, "_should_switch", return_value=True)
+    vinkdb.add(sample_records[7:])
+
+    # Add more while building so they go to buffer
+    vinkdb.add(sample_records[:2])
+
+    # Simulate crash
+    vinkdb.close()
+    vinkdb.load()
+
+    # Recovery should detect buffered records and restart the build
+    timeout = 5
+    start = time.time()
+    while vinkdb.is_ann_building and (time.time() - start) < timeout:
+        time.sleep(0.5)
+
+    assert vinkdb.strategy == "approximate_search", (
+        "Should recover and complete ANN build"
+    )
+
+
 @pytest.mark.parametrize("vinkdb", [{"force_exact": True}], indirect=True)
 def test_force_exact(vinkdb):
     assert vinkdb.force_exact is True, "force_exact should be True"
