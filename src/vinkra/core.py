@@ -137,22 +137,30 @@ class VinkraDB:
         else:
             self._records_db_path = ":memory:"
 
-        self._records_db = SQLiteWrapper(
-            self._records_db_path,
-            index_config={
-                "dim": str(self.dim),
-                "metric": self.metric,
-                "strategy": "exact",
-            },
-        )
+        self._open_sql()
 
         # Threading components for ANN auto-switch
         self._is_ann_building = False
         self._rwlock = rwlock.RWLockFair()
 
+        self._closed = False
         self.load()
         atexit.register(self.close)
-        self._closed = False
+
+    def _open_sql(self, *, should_add_strategy: bool = True) -> None:
+        """Open or reopen the SQLite wrapper connection."""
+        index_config = {
+            "dim": str(self.dim),
+            "metric": self.metric,
+        }
+
+        if should_add_strategy:
+            index_config["strategy"] = "Exact"
+
+        self._records_db = SQLiteWrapper(
+            self._records_db_path,
+            index_config=index_config,
+        )
 
     @property
     def dir_path(self) -> Path | None:
@@ -186,13 +194,15 @@ class VinkraDB:
         """Whether the ANN index is currently being built in the background."""
         return self._is_ann_building
 
+    @property
     def has_buffered(self) -> bool:
         """Whether buffered records exist from an ANN transition."""
-        return self._records_db.has_buffered()
+        return self._records_db.has_buffered
 
+    @property
     def is_empty(self) -> bool:
         """Whether there are no active (non-deleted) records."""
-        return self._records_db.is_empty()
+        return self._records_db.is_empty
 
     def count(self, status: Literal["active", "deleted", "all"] = "active") -> int:
         """Count vectors in the database.
@@ -382,6 +392,10 @@ class VinkraDB:
                 Defaults to False.
         """
         log_info(self.verbose, "Loading index from {}.", self._dir_path)
+
+        if self._closed:
+            self._open_sql(should_add_strategy=False)
+            self._closed = False
 
         if self._strategy is None:
             params = {
