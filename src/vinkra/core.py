@@ -372,9 +372,10 @@ class VinkraDB:
         if self._closed:
             return
 
+        # Signal background threads to abort before closing resources
+        self._closed = True
         self.save()
         self._records_db.close()
-        self._closed = True
 
     def save(self) -> None:
         """Save the index to disk."""
@@ -581,10 +582,17 @@ class VinkraDB:
 
     def _switch_to_approx_strategy(self, strategy) -> None:
         """Switch to approximate search and auto dumps buffer."""
+        if self._closed:
+            return
+
         with self._rwlock.gen_wlock():
             self._strategy = strategy
 
         self._is_ann_building = False
+
+        # Recheck as it may have run while we held the lock
+        if self._closed:
+            return
 
         cursor = self._records_db.conn.cursor()
         buffer_rows = cursor.execute("""
