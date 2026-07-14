@@ -232,7 +232,6 @@ class VinkraDB:
             "last_deleted_at": self._records_db["last_deleted_at"],
             "is_ann_building": self._is_ann_building,
             "has_buffered": self.has_buffered,
-            "is_empty": self.is_empty,
             "active_count": self.count("active"),
             "deleted_count": self.count("deleted"),
         }
