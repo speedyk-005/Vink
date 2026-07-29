@@ -82,7 +82,7 @@ def test_crash_during_temp_file_save(approx_search_strategy):
 
     # Load should fall back to old ann_index.pkl (N=10)
     strategy = _create_bare_approx_strategy(db_path)
-    strategy.load(overwrite=True)
+    strategy.load(strategy.db, overwrite=True)
 
     assert strategy.index.N == 10, f"Expected N=10 but got {strategy.index.N}"
     assert strategy.db.count("active") == 10, (
@@ -106,7 +106,7 @@ def test_crash_before_db_commit(approx_search_strategy):
 
     # Load should fall back to old ann_index.pkl (N=10)
     strategy = _create_bare_approx_strategy(db_path)
-    strategy.load(overwrite=True)
+    strategy.load(strategy.db, overwrite=True)
 
     assert strategy.index.N == 10, f"Expected N=10 but got {strategy.index.N}"
     assert strategy.db.count("active") == 10, (
@@ -129,7 +129,7 @@ def test_power_cut_after_commit_before_swap(approx_search_strategy):
 
     # Load should recover N=20, count=20
     strategy = _create_bare_approx_strategy(db_path)
-    strategy.load(overwrite=True)
+    strategy.load(strategy.db, overwrite=True)
 
     assert strategy.index.N == 20, f"Expected N=29 but got {strategy.index.N}"
     assert strategy.db.count("active") == 20, (
@@ -151,4 +151,4 @@ def test_main_index_corrupted_wal_missing(approx_search_strategy):
     # Load should raise DatabaseCorruptedError
     strategy = _create_bare_approx_strategy(db_path)
     with pytest.raises(DatabaseCorruptedError):
-        strategy.load(overwrite=True)
+        strategy.load(strategy.db, overwrite=True)

@@ -171,15 +171,6 @@ class ApproximateSearch(BaseStrategy):
                 "on your training vectors before performing any index operations."
             )
 
-    def _swap_index(self) -> None:
-        """Replace shadow index with main index and fsync the directory."""
-        self._ann_shadow_index_path.replace(self._ann_index_path)
-        dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
-
     def _do_reconfigure(self) -> None:
         """Run index.reconfigure() in background thread."""
         log_info(self.verbose, "ANN index reconfiguration in progress...")
@@ -393,12 +384,23 @@ class ApproximateSearch(BaseStrategy):
 
         self._swap_index()
 
-    def load(self, *, overwrite: bool) -> None:
+    def _swap_index(self) -> None:
+        """Replace shadow index with main index and fsync the directory."""
+        self._ann_shadow_index_path.replace(self._ann_index_path)
+        dir_fd = os.open(str(self.dir_path), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+
+    def load(self, db, *, overwrite: bool) -> None:
         """Load the index from disk.
 
         Args:
+            db: SQLite wrapper instance.
             overwrite: If True, replace in-memory state with loaded data.
         """
+        self.db = db
         if not (self._ann_index_path and self._ann_index_path.exists()):
             log_info(self.verbose, "No ANN index file found, skipping index load.")
             return

@@ -220,7 +220,7 @@ def test_save_load(tmp_path):
         verbose=True,
         ann_config=config,
     )
-    strategy2.load(overwrite=True)
+    strategy2.load(strategy2.db, overwrite=True)
 
     assert strategy2.index is not None, "Index should be loaded"
     assert strategy2.index.N == 10, f"Expected 10 vectors, got {strategy2.index.N}"

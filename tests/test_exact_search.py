@@ -197,7 +197,7 @@ def test_save_load(sample_embeddings, tmp_path):
         metric="euclidean",
         verbose=False,
     )
-    strategy2.load(overwrite=True)
+    strategy2.load(strategy2.db, overwrite=True)
 
     assert len(strategy2._all_ids) == 3, (
         f"Expected 3 IDs, got {len(strategy2._all_ids)}"

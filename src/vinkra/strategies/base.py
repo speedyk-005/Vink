@@ -76,12 +76,14 @@ class BaseStrategy(ABC):
         ...
 
     @abstractmethod
-    def load(self, *, overwrite: bool) -> None:
+    def load(self, db, *, overwrite: bool) -> None:
         """Load the index from disk.
 
         Args:
+            db: SQLite wrapper instance.
             overwrite: If True, replace in-memory state with loaded data.
         """
+        self.db = db
         ...
 
     @abstractmethod

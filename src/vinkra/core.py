@@ -373,9 +373,11 @@ class VinkraDB:
             return
 
         # Signal background threads to abort before closing resources
-        self._closed = True
-        self.save()
-        self._records_db.close()
+        try:
+            self.save()
+        finally:
+            self._closed = True
+            self._records_db.close()
 
     def save(self) -> None:
         """Save the index to disk."""
@@ -415,7 +417,7 @@ class VinkraDB:
 
             self._strategy = strategy_class(**params)
 
-        self._strategy.load(overwrite=overwrite)
+        self._strategy.load(self._records_db, overwrite=overwrite)
 
         # Lazy init predictor only if strategy is exact
         if self.strategy == "exact_search":
