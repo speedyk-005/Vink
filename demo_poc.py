@@ -80,11 +80,11 @@ def demonstrate_automatic_switch():
                 db.search(q, top_k=5)
             search_time = timeit.default_timer() - start_search
             avg_query_ms = (search_time / len(query_vectors)) * 1000
-        except Exception:
+        except Exception:  # noqa: BLE001
             avg_query_ms = 0.0
 
         # Status indicator
-        if db._ann_building:
+        if db.is_ann_building:
             status = "⚙ Building ANN"
         elif strategy == "approximate_search":
             status = "✓ ANN Active"
@@ -112,16 +112,16 @@ def demonstrate_automatic_switch():
         console.print("[bold green]✓ ANN switch successfully triggered![/bold green]")
     else:
         console.print(
-            "[bold yellow]Note: Switch not triggered - may need more vectors or lower threshold[/bold yellow]"
+            "[bold yellow]Switch not triggered - more vectors needed[/bold yellow]"
         )
 
 
 if __name__ == "__main__":
     try:
         demonstrate_automatic_switch()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         console.print(f"\n[bold red]Error: {type(e).__name__}[/bold red]")
-        console.print(f"{str(e)}\n")
+        console.print(f"{e!s}\n")
         import traceback
 
         traceback.print_exc()

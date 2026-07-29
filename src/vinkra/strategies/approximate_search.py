@@ -452,9 +452,7 @@ class ApproximateSearch(BaseStrategy):
             DatabaseCorruptedError,
         ):
             # Recover from partial save
-            log_info(
-                self.verbose, "Partial save detected... Recovering from backup file"
-            )
+            log_info(self.verbose, "Partial save detected... Recovering from backup file")
 
         try:
             self.index = load_index(self._ann_shadow_index_path)

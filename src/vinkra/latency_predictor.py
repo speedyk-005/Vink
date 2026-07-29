@@ -131,8 +131,7 @@ if __name__ == "__main__":  # pragma: no cover
         act = (time.perf_counter() - t0) * 1000
 
         print(
-            f"{i + 1:<5} | {n:<7} | {p:6.2f}ms | "
-            f"{act:6.2f}ms | {predictor._popt[1]:4.2f}"
+            f"{i + 1:<5} | {n:<7} | {p:6.2f}ms | {act:6.2f}ms | {predictor._popt[1]:4.2f}"
         )
         predictor.tune(n, act)
 

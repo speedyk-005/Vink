@@ -101,9 +101,7 @@ def test_search_without_filter(exact_search_strategy, sample_records):
 
     # Use the first embedding from sample_records as query
     query_embedding = sample_records[0]["embedding"]
-    results = exact_search_strategy.search(
-        query_embedding, top_k=4, include_vectors=True
-    )
+    results = exact_search_strategy.search(query_embedding, top_k=4, include_vectors=True)
     id_to_res = {res["id"]: res for res in results}
 
     assert len(results) == 4, f"Expected 4 results, but got {len(results)}"
@@ -199,9 +197,7 @@ def test_save_load(sample_embeddings, tmp_path):
     )
     strategy2.load(strategy2.db, overwrite=True)
 
-    assert len(strategy2._all_ids) == 3, (
-        f"Expected 3 IDs, got {len(strategy2._all_ids)}"
-    )
+    assert len(strategy2._all_ids) == 3, f"Expected 3 IDs, got {len(strategy2._all_ids)}"
     assert len(strategy2._all_vectors) == 3, (
         f"Expected 3 vectors, got {len(strategy2._all_vectors)}"
     )
@@ -209,7 +205,5 @@ def test_save_load(sample_embeddings, tmp_path):
         f"Expected 3 id_to_idx entries, got {len(strategy2._id_to_idx)}"
     )
 
-    new_ids = [
-        strategy2._bytes_to_uuid_str(id_bytes) for id_bytes in strategy2._all_ids
-    ]
+    new_ids = [strategy2._bytes_to_uuid_str(id_bytes) for id_bytes in strategy2._all_ids]
     assert set(new_ids) == set(original_ids), "Loaded IDs don't match original IDs"

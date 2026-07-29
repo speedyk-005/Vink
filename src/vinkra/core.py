@@ -303,9 +303,7 @@ class VinkraDB:
                 f"Invalid vector records: {pretty_errors(e)}"
             ) from None
 
-        log_info(
-            self.verbose, "Adding {} vector records to index.", len(vector_records)
-        )
+        log_info(self.verbose, "Adding {} vector records to index.", len(vector_records))
 
         validated_records = [r.model_dump() for r in validated.records]
 

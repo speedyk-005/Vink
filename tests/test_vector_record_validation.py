@@ -71,9 +71,7 @@ def test_vinkdb_init_handshake(callback, expected_exc, match, tmp_path):
 
 def test_vinkdb_lazy_embedding(tmp_path):
     """Test that VinkraDB uses the callback to populate missing embeddings in add()."""
-    db = VinkraDB(
-        dir_path=tmp_path, dim=DIM, embedding_callback=mock_embedding_callback
-    )
+    db = VinkraDB(dir_path=tmp_path, dim=DIM, embedding_callback=mock_embedding_callback)
 
     # Record missing the 'embedding' key
     records = [{"content": "hello world"}]
