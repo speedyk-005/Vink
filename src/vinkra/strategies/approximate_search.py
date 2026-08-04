@@ -375,6 +375,10 @@ class ApproximateSearch(BaseStrategy):
         """Save the index to disk using double-write strategy for tight syncing."""
         self._validate_fitted()
 
+        if self.dir_path is None:
+            self.db.commit()
+            return
+
         with self._ann_shadow_index_path.open("wb") as f:
             pickle.dump(self.index, f, protocol=5)
             f.flush()  # Flush internal buffer
