@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`_open_sql()` extracted** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): SQLite wrapper initialization extracted into a reusable method.
 - **ANN transition recovery** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): `load()` replays buffered records when stale buffer data is detected, resuming an interrupted transition.
+- **Latency predictor** ([#9](https://github.com/speedyk-005/vinkra/pull/9)): Replaced SciPy's `curve_fit` with NumPy's `polyfit` using log-log linear regression for power-law fitting, removing the SciPy dependency while preserving prediction behavior.
 
 ## [0.2.0a2] - 2026-07-13
 

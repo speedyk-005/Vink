@@ -132,3 +132,4 @@ ignore = ["PLW2901", "COM812", "D203", "D213", "RUF001", "RUF003", "RUF012", "S3
 "src/vinkra/sql_wrapper.py" = ["S608", "PLR2004"]
 "src/vinkra/latency_predictor.py" = ["SLF001"]
 "tests/*" = ["E501", "S101", "PLR2004", "Q0", "ERA001", "SLF001", "PT", "ARG002", "INP001"]
+"demo_poc.py" = ["ALL"]
