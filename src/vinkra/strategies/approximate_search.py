@@ -190,10 +190,10 @@ class ApproximateSearch(BaseStrategy):
         active_indices = [i for i, m in enumerate(self._mask) if m]
 
         if len(active_indices) == 0:
-            self.active_ids_arr = np.empty((0,), dtype="S16")
+            self.active_ids_arr = np.empty((0,), dtype=object)
             return
 
-        self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
+        self.active_ids_arr = np.array(self._all_ids, dtype=object)[active_indices]
 
     def add(self, vector_records: list[dict], *, is_buffer: bool = False) -> list[str]:
         """Add vectors to the index.
@@ -348,7 +348,7 @@ class ApproximateSearch(BaseStrategy):
 
             self.db.compact()
 
-            self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
+            self.active_ids_arr = np.array(self._all_ids, dtype=object)[active_indices]
             self._all_ids = self.active_ids_arr.tolist()
             self._id_to_idx = {
                 id_bytes: idx for idx, id_bytes in enumerate(self._all_ids)

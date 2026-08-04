@@ -68,11 +68,11 @@ class ExactSearch(BaseStrategy):
 
         if len(active_indices) == 0:
             self.active_vectors_arr = np.empty((0, self.dim), dtype=np.float32)
-            self.active_ids_arr = np.empty((0,), dtype="S16")
+            self.active_ids_arr = np.empty((0,), dtype=object)
             return
 
         self.active_vectors_arr = np.vstack(self._all_vectors)[active_indices]
-        self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
+        self.active_ids_arr = np.array(self._all_ids, dtype=object)[active_indices]
 
     def add(self, vector_records: list[dict]) -> list[str]:
         """Add vectors to the index.
@@ -197,7 +197,7 @@ class ExactSearch(BaseStrategy):
             self.active_vectors_arr = np.vstack(self._all_vectors).astype(
                 np.float32, copy=False
             )[active_indices]
-            self.active_ids_arr = np.array(self._all_ids, dtype="S16")[active_indices]
+            self.active_ids_arr = np.array(self._all_ids, dtype=object)[active_indices]
 
             self._all_vectors = self.active_vectors_arr.tolist()
             self._all_ids = self.active_ids_arr.tolist()
