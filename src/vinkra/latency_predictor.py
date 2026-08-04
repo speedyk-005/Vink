@@ -2,7 +2,6 @@ import time
 from collections import deque
 
 import numpy as np
-from scipy.optimize import curve_fit
 
 # Minimum data points before outlier smoothing
 _MIN_SMOOTH_SAMPLES = 2
@@ -34,7 +33,7 @@ class LatencyPredictor:
         self.x_buffer = deque(maxlen=window_size)
         self.y_buffer = deque(maxlen=window_size)
 
-        self._popt = [1e-5, 1.0]  # [a, b] -> y = a * x^b
+        self._popt = np.array([1e-5, 1.0], dtype=np.float64)  # [a, b]
         self._calibrate_device()
 
     def _calibrate_device(self) -> None:
@@ -48,14 +47,14 @@ class LatencyPredictor:
 
         self._calibration_search(vecs, q)  # Warm-up
 
-        avg_ms = 0
+        avg_ms = 0.0
         for _ in range(5):
             start = time.perf_counter()
             self._calibration_search(vecs, q)
             lat_ms = (time.perf_counter() - start) * 1000
             avg_ms = (avg_ms + lat_ms) / 2  # EMA-style blend
 
-        avg_ms = avg_ms * 0.9  # Account for Python overhead in actual usage.
+        avg_ms *= 0.9  # Account for Python overhead in actual usage.
 
         self._popt[0] = avg_ms / (test_n ** self._popt[1])
 
@@ -70,31 +69,40 @@ class LatencyPredictor:
             n_vecs: Current number of vectors in the index.
             actual_lat: Actual measured latency in milliseconds.
         """
-        # Outlier smoothing: blend with prediction to avoid over-reaction to spikes
-        if len(self.x_buffer) >= _MIN_SMOOTH_SAMPLES:
-            pred = self.predict(n_vecs)
-            if actual_lat > pred * 2:
-                # Blend: 70% predicted, 30% actual - reduces spike impact
-                actual_lat = pred * 0.7 + actual_lat * 0.3
-
-        self.x_buffer.append(n_vecs)
+        # Guard against invalid values for logarithmic fitting
+        self.x_buffer.append(max(n_vecs, 1))
         self.y_buffer.append(max(actual_lat, 1e-4))
 
-        if len(self.x_buffer) >= _MIN_FIT_SAMPLES:
-            # Bounds keep the 'Physics' sane despite hardware jitter
-            lower_bounds = [1e-10, 0.7]
-            upper_bounds = [0.1, 1.5]
+        if len(self.x_buffer) < _MIN_FIT_SAMPLES:
+            return
 
-            new_popt, _ = curve_fit(
-                self._power_law,
-                list(self.x_buffer),
-                list(self.y_buffer),
-                p0=self._popt,
-                bounds=(lower_bounds, upper_bounds),
-                method="trf",
-                maxfev=50,
+        x = np.asarray(self.x_buffer, dtype=np.float64)
+        y = np.asarray(self.y_buffer, dtype=np.float64)
+
+        try:
+            # Linearize the power law:
+            # log(y) = log(a) + b * log(x)
+            log_x = np.log(x)
+            log_y = np.log(y)
+
+            # Least-squares fit in log-log space
+            b, log_a = np.polyfit(log_x, log_y, deg=1)
+            a = np.exp(log_a)
+
+            self._popt = np.array(
+                [
+                    np.clip(a, 1e-10, 0.1),
+                    np.clip(b, 0.7, 1.5),
+                ],
+                dtype=np.float64,
             )
-            self._popt = new_popt
+
+        except (
+            np.linalg.LinAlgError,
+            FloatingPointError,
+            ValueError,
+        ):
+            pass
 
     def _calibration_search(self, vectors: np.ndarray, query: np.ndarray) -> None:
         """Perform dummy search for timing calibration."""
@@ -120,7 +128,7 @@ if __name__ == "__main__":  # pragma: no cover
     print(f"{'Step':<5} | {'N':<7} | {'Pred':<8} | {'Actual':<8} | {'Exp (b)':<5}")
     print("-" * 45)
 
-    for i in range(15):
+    for i in range(25):
         n = (i + 1) * 10000
         v = np.random.randn(n, 128).astype(np.float32)
         q = np.random.randn(128).astype(np.float32)
@@ -131,8 +139,7 @@ if __name__ == "__main__":  # pragma: no cover
         act = (time.perf_counter() - t0) * 1000
 
         print(
-            f"{i + 1:<5} | {n:<7} | {p:6.2f}ms | "
-            f"{act:6.2f}ms | {predictor._popt[1]:4.2f}"
+            f"{i + 1:<5} | {n:<7} | {p:6.2f}ms | {act:6.2f}ms | {predictor._popt[1]:4.2f}"
         )
         predictor.tune(n, act)
 
