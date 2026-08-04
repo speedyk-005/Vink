@@ -355,7 +355,7 @@ class VinkraDB:
         self.save()
         self._records_db.close()
         self._closed = True
-      
+
     def save(self) -> None:
         """Save the index to disk."""
         log_info(self.verbose, "Saving index to {}.", self._dir_path)
