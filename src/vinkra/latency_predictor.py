@@ -1,7 +1,9 @@
 import time
+import warnings
 from collections import deque
 
 import numpy as np
+from numpy.exceptions import RankWarning
 
 # Minimum data points before outlier smoothing
 _MIN_SMOOTH_SAMPLES = 2
@@ -85,8 +87,12 @@ class LatencyPredictor:
             log_x = np.log(x)
             log_y = np.log(y)
 
-            # Least-squares fit in log-log space
-            b, log_a = np.polyfit(log_x, log_y, deg=1)
+            # Least-squares fit in log-log space. All-identical n_vecs samples
+            # produce an ill-conditioned design matrix; numpy's RankWarning is
+            # expected and harmless since the fit is clipped below.
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=RankWarning)
+                b, log_a = np.polyfit(log_x, log_y, deg=1)
             a = np.exp(log_a)
 
             self._popt = np.array(
