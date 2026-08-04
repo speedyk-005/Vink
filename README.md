@@ -300,6 +300,12 @@ db.strategy  # "exact_search" or "approximate_search"
 # Whether the ANN index is currently being built in the background
 db.is_ann_building
 
+# Whether there are buffered records (from an ANN transition)
+db.has_buffered
+
+# Whether there are no active (non-deleted) records
+db.is_empty
+
 # Count vectors
 active = db.count()      # same as db.count("active") (default)
 deleted = db.count("deleted")
@@ -312,6 +318,7 @@ stats = db.stats()
 #     "metric": "euclidean",
 #     "strategy": "exact_search",
 #     "is_ann_building": false,
+#     "has_buffered": false,
 #     "last_saved_at": "...",
 #     "last_deleted_at": "...",
 #     "active_count": 1000,

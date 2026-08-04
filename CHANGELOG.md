@@ -9,9 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`has_buffered` property** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): Check for buffered records via `db.has_buffered`.
+- **`is_empty` property** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): Check if there are no active records via `db.is_empty`.
+- **ANN transition recovery** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): `load()` replays buffered records when stale buffer data is detected, resuming an interrupted transition.
+
 ### Changed
 
-- **Latency predictor**: Replaced SciPy's `curve_fit` with NumPy's `polyfit` using log-log linear regression for power-law fitting, removing the SciPy dependency while preserving prediction behavior.
+- **`_open_sql()` extracted** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): SQLite wrapper initialization extracted into a reusable method.
+- **ANN transition recovery** ([#5](https://github.com/speedyk-005/vinkra/pull/5)): `load()` replays buffered records when stale buffer data is detected, resuming an interrupted transition.
+- **Latency predictor** ([#9](https://github.com/speedyk-005/vinkra/pull/9)): Replaced SciPy's `curve_fit` with NumPy's `polyfit` using log-log linear regression for power-law fitting, removing the SciPy dependency while preserving prediction behavior.
+
+### Fixed
+
+- **ANN transition thread shutdown race** ([#10](https://github.com/speedyk-005/vinkra/pull/10)): `close()` now joins in-flight ANN build threads before closing the SQLite connection, preventing `cursor.execute()` from hitting a closed database while buffered records are being replayed.
 
 ## [0.2.0a2] - 2026-07-13
 

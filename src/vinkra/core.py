@@ -137,22 +137,31 @@ class VinkraDB:
         else:
             self._records_db_path = ":memory:"
 
-        self._records_db = SQLiteWrapper(
-            self._records_db_path,
-            index_config={
-                "dim": str(self.dim),
-                "metric": self.metric,
-                "strategy": "exact",
-            },
-        )
+        self._open_sql()
 
         # Threading components for ANN auto-switch
-        self._ann_building = False
+        self._is_ann_building = False
         self._rwlock = rwlock.RWLockFair()
+        self._approx_threads: list[Thread] = []
 
+        self._closed = False
         self.load()
         atexit.register(self.close)
-        self._closed = False
+
+    def _open_sql(self, *, should_add_strategy: bool = True) -> None:
+        """Open or reopen the SQLite wrapper connection."""
+        index_config = {
+            "dim": str(self.dim),
+            "metric": self.metric,
+        }
+
+        if should_add_strategy:
+            index_config["strategy"] = "Exact"
+
+        self._records_db = SQLiteWrapper(
+            self._records_db_path,
+            index_config=index_config,
+        )
 
     @property
     def dir_path(self) -> Path | None:
@@ -184,7 +193,17 @@ class VinkraDB:
     @property
     def is_ann_building(self) -> bool:
         """Whether the ANN index is currently being built in the background."""
-        return self._ann_building
+        return self._is_ann_building
+
+    @property
+    def has_buffered(self) -> bool:
+        """Whether buffered records exist from an ANN transition."""
+        return self._records_db.has_buffered
+
+    @property
+    def is_empty(self) -> bool:
+        """Whether there are no active (non-deleted) records."""
+        return self._records_db.is_empty
 
     def count(self, status: Literal["active", "deleted", "all"] = "active") -> int:
         """Count vectors in the database.
@@ -202,7 +221,8 @@ class VinkraDB:
 
         Returns:
             Database metadata: version, dim, metric, strategy, is_ann_building,
-            last_saved_at, last_deleted_at, active_count, deleted_count.
+            has_buffered, last_saved_at, last_deleted_at, active_count,
+            deleted_count.
         """
         return {
             "version": __version__,
@@ -211,7 +231,8 @@ class VinkraDB:
             "strategy": self._records_db["strategy"],
             "last_saved_at": self._records_db["last_saved_at"],
             "last_deleted_at": self._records_db["last_deleted_at"],
-            "is_ann_building": self._ann_building,
+            "is_ann_building": self._is_ann_building,
+            "has_buffered": self.has_buffered,
             "active_count": self.count("active"),
             "deleted_count": self.count("deleted"),
         }
@@ -283,13 +304,11 @@ class VinkraDB:
                 f"Invalid vector records: {pretty_errors(e)}"
             ) from None
 
-        log_info(
-            self.verbose, "Adding {} vector records to index.", len(vector_records)
-        )
+        log_info(self.verbose, "Adding {} vector records to index.", len(vector_records))
 
         validated_records = [r.model_dump() for r in validated.records]
 
-        if self._ann_building:
+        if self._is_ann_building:
             assigned_ids = [r["id"] for r in validated_records]
             self._records_db.insert(validated_records, is_buffer=True)
             log_info(
@@ -303,8 +322,8 @@ class VinkraDB:
 
         # Check if switch should be triggered based on new count
         if self.strategy == "exact_search" and self._should_switch():
-            self._ann_building = True
-            Thread(target=self._prepare_approx_strategy, daemon=True).start()
+            self._is_ann_building = True
+            self._start_approx_thread()
 
         log_info(
             self.verbose, "Successfully added {} records to index.", len(assigned_ids)
@@ -323,7 +342,7 @@ class VinkraDB:
         id_bytes = [validate_id(id_str) for id_str in ids]
 
         # If ANN is building, write to buffer for replay after switch
-        if self.strategy != "approximate_search" and self._ann_building:
+        if self.strategy == "exact_search" and self._is_ann_building:
             self._records_db.soft_delete(id_bytes)
             self._records_db["last_deleted_at"] = datetime.now(UTC).isoformat()
             log_info(
@@ -352,9 +371,13 @@ class VinkraDB:
         if self._closed:
             return
 
-        self.save()
-        self._records_db.close()
-        self._closed = True
+        # Signal background threads to abort, wait for them, then close resources
+        try:
+            self.save()
+        finally:
+            self._closed = True
+            self._join_approx_threads()
+            self._records_db.close()
 
     def save(self) -> None:
         """Save the index to disk."""
@@ -371,6 +394,10 @@ class VinkraDB:
                 Defaults to False.
         """
         log_info(self.verbose, "Loading index from {}.", self._dir_path)
+
+        if self._closed:
+            self._open_sql(should_add_strategy=False)
+            self._closed = False
 
         if self._strategy is None:
             params = {
@@ -390,13 +417,22 @@ class VinkraDB:
 
             self._strategy = strategy_class(**params)
 
-        self._strategy.load(overwrite=overwrite)
+        self._strategy.load(self._records_db, overwrite=overwrite)
 
         # Lazy init predictor only if strategy is exact
         if self.strategy == "exact_search":
             from vinkra.latency_predictor import LatencyPredictor
 
             self._latency_predictor = LatencyPredictor(dim=self._dim)
+
+        # Recover interrupted ANN transition by replaying buffered records
+        if (
+            self.has_buffered
+            and self.strategy == "exact_search"
+            and self._should_switch()
+        ):
+            self._is_ann_building = True
+            self._start_approx_thread()
 
         log_info(self.verbose, "Index loaded successfully.")
 
@@ -473,7 +509,7 @@ class VinkraDB:
             or None if the batch is small enough or the DB is not empty.
         """
         if (
-            self.count() > 0
+            not self.is_empty
             or self._latency_predictor.predict(len(vector_records))
             <= self._ann_config.switch_latency_ms
         ):
@@ -519,6 +555,18 @@ class VinkraDB:
         predicted_latency = self._latency_predictor.predict(n_vecs)
         return predicted_latency >= cfg.switch_latency_ms
 
+    def _start_approx_thread(self) -> None:
+        """Start the background ANN build, tracked so close() can join it."""
+        thread = Thread(target=self._prepare_approx_strategy, daemon=True)
+        self._approx_threads.append(thread)
+        thread.start()
+
+    def _join_approx_threads(self, timeout: float = 5.0) -> None:
+        """Wait for in-flight ANN build threads before closing the DB."""
+        for thread in self._approx_threads:
+            if thread.is_alive():
+                thread.join(timeout=timeout)
+
     def _prepare_approx_strategy(self) -> None:
         """
         Build ANN strategy in a background daemon thread.
@@ -526,6 +574,9 @@ class VinkraDB:
         Runs in a daemon thread so add()/search() remain unblocked.
         Replays buffered records after the strategy switch completes.
         """
+        if self._closed:
+            return
+
         with self._strategy._rwlock.gen_rlock():
             self._strategy._ensure_cache()
             vectors = self._strategy.active_vectors_arr
@@ -548,10 +599,17 @@ class VinkraDB:
 
     def _switch_to_approx_strategy(self, strategy) -> None:
         """Switch to approximate search and auto dumps buffer."""
+        if self._closed:
+            return
+
         with self._rwlock.gen_wlock():
             self._strategy = strategy
 
-        self._ann_building = False
+        self._is_ann_building = False
+
+        # Recheck as it may have run while we held the lock
+        if self._closed:
+            return
 
         cursor = self._records_db.conn.cursor()
         buffer_rows = cursor.execute("""

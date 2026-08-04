@@ -212,17 +212,19 @@ class ExactSearch(BaseStrategy):
         """Save the index to disk by committing the database."""
         self.db.commit()
 
-    def load(self, *, overwrite: bool) -> None:
+    def load(self, db, *, overwrite: bool) -> None:
         """Load the index from SQLite.
 
         Args:
+            db: SQLite wrapper instance.
             overwrite: If True, replace in-memory state with loaded data.
         """
+        self.db = db
         if not overwrite and self._all_ids:
             log_info(self.verbose, "Index already loaded, skipping.")
             return
 
-        if self.db.count("active") == 0:
+        if self.db.is_empty():
             return
 
         with self._rwlock.gen_wlock():
