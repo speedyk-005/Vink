@@ -142,6 +142,7 @@ class VinkraDB:
         # Threading components for ANN auto-switch
         self._is_ann_building = False
         self._rwlock = rwlock.RWLockFair()
+        self._approx_threads: list[Thread] = []
 
         self._closed = False
         self.load()
@@ -322,7 +323,7 @@ class VinkraDB:
         # Check if switch should be triggered based on new count
         if self.strategy == "exact_search" and self._should_switch():
             self._is_ann_building = True
-            Thread(target=self._prepare_approx_strategy, daemon=True).start()
+            self._start_approx_thread()
 
         log_info(
             self.verbose, "Successfully added {} records to index.", len(assigned_ids)
@@ -370,11 +371,12 @@ class VinkraDB:
         if self._closed:
             return
 
-        # Signal background threads to abort before closing resources
+        # Signal background threads to abort, wait for them, then close resources
         try:
             self.save()
         finally:
             self._closed = True
+            self._join_approx_threads()
             self._records_db.close()
 
     def save(self) -> None:
@@ -430,7 +432,7 @@ class VinkraDB:
             and self._should_switch()
         ):
             self._is_ann_building = True
-            Thread(target=self._prepare_approx_strategy, daemon=True).start()
+            self._start_approx_thread()
 
         log_info(self.verbose, "Index loaded successfully.")
 
@@ -553,6 +555,18 @@ class VinkraDB:
         predicted_latency = self._latency_predictor.predict(n_vecs)
         return predicted_latency >= cfg.switch_latency_ms
 
+    def _start_approx_thread(self) -> None:
+        """Start the background ANN build, tracked so close() can join it."""
+        thread = Thread(target=self._prepare_approx_strategy, daemon=True)
+        self._approx_threads.append(thread)
+        thread.start()
+
+    def _join_approx_threads(self, timeout: float = 5.0) -> None:
+        """Wait for in-flight ANN build threads before closing the DB."""
+        for thread in self._approx_threads:
+            if thread.is_alive():
+                thread.join(timeout=timeout)
+
     def _prepare_approx_strategy(self) -> None:
         """
         Build ANN strategy in a background daemon thread.
@@ -560,6 +574,9 @@ class VinkraDB:
         Runs in a daemon thread so add()/search() remain unblocked.
         Replays buffered records after the strategy switch completes.
         """
+        if self._closed:
+            return
+
         with self._strategy._rwlock.gen_rlock():
             self._strategy._ensure_cache()
             vectors = self._strategy.active_vectors_arr
