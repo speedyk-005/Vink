@@ -121,7 +121,7 @@ if __name__ == "__main__":
         demonstrate_automatic_switch()
     except Exception as e:
         console.print(f"\n[bold red]Error: {type(e).__name__}[/bold red]")
-        console.print(f"{str(e)}\n")
+        console.print(f"{e!s}\n")
         import traceback
 
         traceback.print_exc()

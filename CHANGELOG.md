@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **Latency predictor**: Replaced SciPy's `curve_fit` with NumPy's `polyfit` using log-log linear regression for power-law fitting, removing the SciPy dependency while preserving prediction behavior.
+
 ## [0.2.0a2] - 2026-07-13
 
 ### Fixed
