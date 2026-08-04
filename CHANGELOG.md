@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **ANN transition thread shutdown race** ([#10](https://github.com/speedyk-005/vinkra/pull/10)): `close()` now joins in-flight ANN build threads before closing the SQLite connection, preventing `cursor.execute()` from hitting a closed database while buffered records are being replayed.
 - **UUID id truncation in cached id arrays** ([#13](https://github.com/speedyk-005/vinkra/pull/13)): Active ids now stay plain `bytes` instead of numpy `S16` values, whose null-terminated semantics silently dropped trailing `0x00` bytes from UUIDv7 ids and caused `KeyError` in `_build_results`.
+- **ANN save in in-memory mode** ([#12](https://github.com/speedyk-005/vinkra/pull/12)): `ApproximateSearch.save()` no longer crashes with `AttributeError` on `_ann_shadow_index_path` when running volatile (no `dir_path`); it commits the DB and skips the disk double-write.
 
 ## [0.2.0a2] - 2026-07-13
 
